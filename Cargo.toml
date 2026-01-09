@@ -1,0 +1,45 @@
+[package]
+name = "jsondiff"
+version = "0.1.0"
+edition = "2021"
+authors = ["Aksh"]
+description = "Lightning-fast JSON diff tool with beautiful output"
+license = "MIT"
+keywords = ["json", "diff", "cli", "comparison"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+# CLI parsing
+clap = { version = "4.5", features = ["derive"] }
+
+# JSON parsing (SIMD-accelerated)
+sonic-rs = "0.3"
+
+# Diff algorithm
+similar = "2.6"
+
+# Terminal colors
+colored = "3.0"
+
+# Error handling
+thiserror = "2.0"
+
+# Memory mapping for large files
+memmap2 = "0.9"
+
+# Parallel processing
+rayon = "1.10"
+
+# Terminal detection
+atty = "0.2"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.14"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

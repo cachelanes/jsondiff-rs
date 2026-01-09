@@ -1,0 +1,4 @@
+# Enable native CPU features for SIMD optimizations in sonic-rs JSON parser
+# This allows sonic-rs to use AVX2/SSE4.2 instructions for faster JSON parsing
+[build]
+rustflags = ["-C", "target-cpu=native"]
