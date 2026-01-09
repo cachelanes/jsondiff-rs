@@ -183,9 +183,9 @@ Benchmark results on a typical development machine (run `cargo bench` to reprodu
 
 | Size | Identical | 10% Different | 50% Different | 100% Different |
 |------|-----------|---------------|---------------|----------------|
-| 10 keys | 0.73 µs | 2.6 µs | 3.1 µs | 3.9 µs |
-| 100 keys | 46 µs | 41 µs | 52 µs | 35 µs |
-| 1000 keys | 4.4 ms | 2.3 ms | 2.5 ms | 359 µs |
+| 10 keys | 0.80 µs | 1.8 µs | 2.2 µs | 3.5 µs |
+| 100 keys | 49 µs | 41 µs | 51 µs | 35 µs |
+| 1000 keys | 3.9 ms | 2.3 ms | 2.3 ms | 360 µs |
 
 ### Array Comparison
 
@@ -200,9 +200,9 @@ Benchmark results on a typical development machine (run `cargo bench` to reprodu
 
 | Depth | Time |
 |-------|------|
-| 2 levels | 3.9 µs |
-| 4 levels | 59 µs |
-| 6 levels | 672 µs |
+| 2 levels | 2.9 µs |
+| 4 levels | 51 µs |
+| 6 levels | 591 µs |
 
 **Notes:**
 - Ordered array comparison uses the Myers diff algorithm, which is O(n*d) where d is the edit distance
