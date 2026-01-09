@@ -28,6 +28,45 @@ for item in left {
 
 Each `values_equal()` call is O(1) for primitives but O(m) for nested objects, making worst case O(n² * m).
 
+## Additional Finding: Multiset Has the Same Issue
+
+Investigation revealed that **multiset mode (`-m`) has the same O(n²) problem**, but the benchmark was hiding it.
+
+### Benchmark Discrepancy
+
+The README showed multiset as much faster than set mode:
+- Set mode @ 1000 elements: 204 ms
+- Multiset mode @ 1000 elements: 982 µs (appears ~200x faster!)
+
+### Root Cause: Flawed Benchmark
+
+Looking at `benches/benchmarks.rs`, the multiset benchmark uses:
+
+```rust
+// Only 10 unique values regardless of array size!
+let elements1: Vec<String> = (0..*size).map(|i| (i % 10).to_string()).collect();
+let elements2: Vec<String> = (0..*size).map(|i| ((i + 1) % 10).to_string()).collect();
+```
+
+With `i % 10`, there are only **10 unique values** even for 1000-element arrays. The O(n²) `count_values()` function only iterates over 10 items in its inner loop, masking the true complexity.
+
+### True Multiset Performance
+
+After fixing the benchmark to use unique values (same pattern as set mode with 50% overlap):
+
+| Array Size | Multiset (few unique) | Multiset (unique values) |
+|------------|----------------------|--------------------------|
+| 100 | 129 µs | **3.7 ms** |
+| 500 | 531 µs | **95 ms** |
+| 1000 | 1.1 ms | **387 ms** |
+
+**Multiset with unique values is actually slower than set mode** - both have O(n²) behavior.
+
+### Action Items
+
+1. Fix `benches/benchmarks.rs` to add `multiset_50pct_overlap` benchmark with unique values
+2. Apply the same optimization to `diff_arrays_as_multiset` and `count_values()`
+
 ## Proposed Solutions
 
 ### 1. Hash-based Set Comparison
@@ -132,3 +171,27 @@ fn diff_arrays_as_set(left: &[Value], right: &[Value], ...) -> Vec<DiffOp> {
 ```bash
 cargo bench -- diff_arrays/set
 ```
+
+---
+
+## Implementation Results
+
+After implementing hash-based optimization for both set and multiset modes:
+
+### Set Mode
+
+| Array Size | Before | After | Speedup |
+|------------|--------|-------|---------|
+| 100 | 2.1 ms | 76 µs | **28x** |
+| 500 | 53 ms | 421 µs | **126x** |
+| 1000 | 204 ms | 806 µs | **253x** |
+
+### Multiset Mode (unique values)
+
+| Array Size | Before | After | Speedup |
+|------------|--------|-------|---------|
+| 100 | 3.7 ms | 110 µs | **34x** |
+| 500 | 95 ms | 520 µs | **183x** |
+| 1000 | 387 ms | 1.1 ms | **352x** |
+
+Both modes are now **faster than ordered mode** for large arrays with many differences.
