@@ -1,0 +1,14 @@
+{
+  "user": {
+    "name": "Bob",
+    "settings": {
+      "theme": "light",
+      "notifications": true,
+      "language": "en"
+    }
+  },
+  "items": [
+    {"id": 1, "name": "first"},
+    {"id": 3, "name": "third"}
+  ]
+}

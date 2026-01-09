@@ -1,0 +1,13 @@
+{
+  "user": {
+    "name": "Alice",
+    "settings": {
+      "theme": "dark",
+      "notifications": true
+    }
+  },
+  "items": [
+    {"id": 1, "name": "first"},
+    {"id": 2, "name": "second"}
+  ]
+}

@@ -19,3 +19,11 @@ In order, with most to least importance, we must:
 - Support for ignoring paths
 - Support for NOT ignoring subpaths of ignored paths
 
+# Testing Requirements
+
+From higher to lower importance:
+
+- Property Tests
+- Snapshot Tests
+- Unit tests
+

@@ -37,6 +37,8 @@ atty = "0.2"
 assert_cmd = "2.0"
 predicates = "3.1"
 tempfile = "3.14"
+proptest = "1.5"
+insta = { version = "1.41", features = ["json"] }
 
 [profile.release]
 lto = true

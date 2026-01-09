@@ -1,1 +1,4 @@
 /target
+
+# Snapshot test pending files (actual .snap files should be committed)
+*.snap.new
