@@ -1,0 +1,30 @@
+---
+source: tests/snapshots.rs
+expression: output
+---
+{
+  "operations": [
+    {
+      "op": "replace",
+      "path": "$.version",
+      "oldValue": 1,
+      "newValue": 2
+    },
+    {
+      "op": "replace",
+      "path": "$.enabled",
+      "oldValue": true,
+      "newValue": false
+    },
+    {
+      "op": "add",
+      "path": "$.added",
+      "value": "new field"
+    }
+  ],
+  "stats": {
+    "added": 1,
+    "removed": 0,
+    "modified": 2
+  }
+}

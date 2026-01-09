@@ -113,7 +113,7 @@ impl PrettyFormatter {
             if arr.is_empty() {
                 return "[]".to_string();
             }
-            if arr.len() <= 3 && self.is_simple_array(&arr) {
+            if arr.len() <= 3 && self.is_simple_array(arr) {
                 // Inline short simple arrays
                 let items: Vec<String> = arr
                     .iter()

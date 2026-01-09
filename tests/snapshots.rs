@@ -1,9 +1,8 @@
-use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use insta::assert_snapshot;
 
 fn jsondiff_output(args: &[&str]) -> String {
-    let output = Command::cargo_bin("jsondiff")
-        .unwrap()
+    let output = cargo_bin_cmd!("jsondiff")
         .args(args)
         .output()
         .expect("Failed to execute command");

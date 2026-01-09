@@ -167,6 +167,14 @@ Options:
 - `3`: Invalid JSON
 - `4`: File read error
 
+## Output Ordering
+
+Diff output is deterministic and follows the input JSON structure:
+- Removed and modified keys appear in the order they occur in the left (original) file
+- Added keys appear in the order they occur in the right (new) file
+
+This makes output predictable and easy to correlate with source files.
+
 ## Performance
 
 Benchmark results on a typical development machine (run `cargo bench` to reproduce):
@@ -175,9 +183,9 @@ Benchmark results on a typical development machine (run `cargo bench` to reprodu
 
 | Size | Identical | 10% Different | 50% Different | 100% Different |
 |------|-----------|---------------|---------------|----------------|
-| 10 keys | 0.85 µs | 3.1 µs | 3.5 µs | 4.5 µs |
-| 100 keys | 50 µs | 70 µs | 74 µs | 95 µs |
-| 1000 keys | 4.0 ms | 4.5 ms | 4.8 ms | 4.7 ms |
+| 10 keys | 0.80 µs | 1.8 µs | 2.2 µs | 3.5 µs |
+| 100 keys | 49 µs | 41 µs | 51 µs | 35 µs |
+| 1000 keys | 3.9 ms | 2.3 ms | 2.3 ms | 360 µs |
 
 ### Array Comparison
 
@@ -192,9 +200,9 @@ Benchmark results on a typical development machine (run `cargo bench` to reprodu
 
 | Depth | Time |
 |-------|------|
-| 2 levels | 4.4 µs |
-| 4 levels | 58 µs |
-| 6 levels | 641 µs |
+| 2 levels | 2.9 µs |
+| 4 levels | 51 µs |
+| 6 levels | 591 µs |
 
 **Notes:**
 - Ordered array comparison uses the Myers diff algorithm, which is O(n*d) where d is the edit distance
