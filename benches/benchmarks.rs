@@ -216,9 +216,9 @@ fn bench_diff_arrays(c: &mut Criterion) {
         );
     }
 
-    // Benchmark multiset mode with duplicates
+    // Benchmark multiset mode with duplicates (few unique values)
     for size in [10, 100, 500, 1000].iter() {
-        // Arrays with duplicates and different counts
+        // Arrays with duplicates and different counts - only 10 unique values
         let elements1: Vec<String> = (0..*size).map(|i| (i % 10).to_string()).collect();
         let elements2: Vec<String> = (0..*size).map(|i| ((i + 1) % 10).to_string()).collect();
 
@@ -229,7 +229,28 @@ fn bench_diff_arrays(c: &mut Criterion) {
         let right: Value = sonic_rs::from_str(&json2).unwrap();
 
         group.bench_with_input(
-            BenchmarkId::new("multiset_with_dupes", size),
+            BenchmarkId::new("multiset_few_unique", size),
+            &(&left, &right),
+            |b, (left, right)| {
+                b.iter(|| multiset_engine.diff(black_box(*left), black_box(*right)));
+            },
+        );
+    }
+
+    // Benchmark multiset mode with unique values (true O(n²) stress test)
+    for size in [10, 100, 500, 1000].iter() {
+        // 50% overlap with all unique values - same pattern as set mode
+        let elements1: Vec<String> = (0..*size).map(|i| i.to_string()).collect();
+        let elements2: Vec<String> = (size / 2..size + size / 2).map(|i| i.to_string()).collect();
+
+        let json1 = format!("[{}]", elements1.join(", "));
+        let json2 = format!("[{}]", elements2.join(", "));
+
+        let left: Value = sonic_rs::from_str(&json1).unwrap();
+        let right: Value = sonic_rs::from_str(&json2).unwrap();
+
+        group.bench_with_input(
+            BenchmarkId::new("multiset_50pct_overlap", size),
             &(&left, &right),
             |b, (left, right)| {
                 b.iter(|| multiset_engine.diff(black_box(*left), black_box(*right)));

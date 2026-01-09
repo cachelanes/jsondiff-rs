@@ -191,10 +191,12 @@ Benchmark results on a typical development machine (run `cargo bench` to reprodu
 
 | Size | Ordered (Myers) | Set Mode | Multiset Mode |
 |------|-----------------|----------|---------------|
-| 10 elements | 2.6 µs | 25 µs | 28 µs |
-| 100 elements | 86 µs | 2.1 ms | 117 µs |
-| 500 elements | 937 µs | 53 ms | 502 µs |
-| 1000 elements | 2.9 ms | 204 ms | 982 µs |
+| 10 elements | 2.6 µs | 46 µs | 46 µs |
+| 100 elements | 86 µs | 2.1 ms | 3.7 ms |
+| 500 elements | 937 µs | 53 ms | 95 ms |
+| 1000 elements | 2.9 ms | 204 ms | 387 ms |
+
+*Set/Multiset benchmarks use 50% overlap with unique values.*
 
 ### Nested Structures
 
