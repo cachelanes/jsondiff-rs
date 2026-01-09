@@ -1,10 +1,11 @@
+use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::io::Write;
 use tempfile::NamedTempFile;
 
 fn jsondiff() -> Command {
-    Command::cargo_bin("jsondiff").unwrap()
+    cargo_bin_cmd!("jsondiff")
 }
 
 // ============================================================================
