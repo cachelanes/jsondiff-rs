@@ -1,6 +1,7 @@
 use super::engine::diff_values;
 use super::types::{DiffConfig, DiffOp, JsonPath};
 use sonic_rs::{JsonContainerTrait, JsonValueTrait, Object, Value};
+use std::collections::HashSet;
 
 /// Compare two JSON objects
 /// By default, objects are compared unordered (keys matched by name)
@@ -14,10 +15,14 @@ pub fn diff_objects(
 ) -> Vec<DiffOp> {
     let mut ops = Vec::new();
 
+    // Build key sets once for O(1) membership checks (avoids repeated String allocations)
+    let left_keys: HashSet<&str> = left.iter().map(|(k, _)| k).collect();
+    let right_keys: HashSet<&str> = right.iter().map(|(k, _)| k).collect();
+
     if config.ordered_objects {
-        diff_objects_ordered(left, right, path, config, &mut ops);
+        diff_objects_ordered(left, right, path, config, &mut ops, &left_keys, &right_keys);
     } else {
-        diff_objects_unordered(left, right, path, config, &mut ops);
+        diff_objects_unordered(left, right, path, config, &mut ops, &left_keys, &right_keys);
     }
 
     ops
@@ -30,12 +35,15 @@ fn diff_objects_unordered(
     path: &JsonPath,
     config: &DiffConfig,
     ops: &mut Vec<DiffOp>,
+    left_keys: &HashSet<&str>,
+    right_keys: &HashSet<&str>,
 ) {
     // Process keys in left object order: removed keys and common keys
     for (key, left_val) in left.iter() {
         let child_path = path.append_key(key);
-        if let Some(right_val) = right.get(&key.to_string()) {
+        if right_keys.contains(key) {
             // Common key - recurse to compare values
+            let right_val = right.get(&key.to_string()).unwrap();
             ops.extend(diff_values(left_val, right_val, &child_path, config));
         } else {
             // Key only in left - removed
@@ -48,7 +56,7 @@ fn diff_objects_unordered(
 
     // Process keys only in right object (added) - in right's order
     for (key, right_val) in right.iter() {
-        if left.get(&key.to_string()).is_none() {
+        if !left_keys.contains(key) {
             let child_path = path.append_key(key);
             ops.push(DiffOp::Added {
                 path: child_path,
@@ -65,6 +73,8 @@ fn diff_objects_ordered(
     path: &JsonPath,
     config: &DiffConfig,
     ops: &mut Vec<DiffOp>,
+    left_keys: &HashSet<&str>,
+    right_keys: &HashSet<&str>,
 ) {
     let left_order: Vec<&str> = left.iter().map(|(k, _)| k).collect();
     let right_order: Vec<&str> = right.iter().map(|(k, _)| k).collect();
@@ -72,8 +82,9 @@ fn diff_objects_ordered(
     // Process keys in left object order
     for (key, left_val) in left.iter() {
         let child_path = path.append_key(key);
-        if let Some(right_val) = right.get(&key.to_string()) {
+        if right_keys.contains(key) {
             // Common key - check position
+            let right_val = right.get(&key.to_string()).unwrap();
             let left_pos = left_order.iter().position(|k| *k == key);
             let right_pos = right_order.iter().position(|k| *k == key);
 
@@ -101,7 +112,7 @@ fn diff_objects_ordered(
 
     // Process keys only in right object (added) - in right's order
     for (key, right_val) in right.iter() {
-        if left.get(&key.to_string()).is_none() {
+        if !left_keys.contains(key) {
             let child_path = path.append_key(key);
             ops.push(DiffOp::Added {
                 path: child_path,
