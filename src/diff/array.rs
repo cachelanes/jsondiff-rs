@@ -211,35 +211,33 @@ pub fn diff_arrays_as_multiset(
     let right_counts = count_values_hashmap(right);
 
     // Process left values in input order for determinism
-    let mut processed_hashes: Vec<u64> = Vec::new();
+    // Use HashSet for O(1) lookup of processed hashes
+    let mut processed: std::collections::HashSet<u64> = std::collections::HashSet::new();
     for val in left {
         let hash = compute_value_hash(val);
         // Only process first occurrence of each unique value
-        if !processed_hashes.contains(&hash)
-            || !is_hash_processed_for_value(&left_counts, &processed_hashes, hash, val)
-        {
-            if is_first_occurrence_in_count_map(&left_counts, hash, val) {
-                let left_count = get_count(&left_counts, hash, val);
-                let right_count = get_count(&right_counts, hash, val);
+        if !processed.contains(&hash) && is_first_occurrence_in_count_map(&left_counts, hash, val) {
+            let left_count = get_count(&left_counts, hash, val);
+            let right_count = get_count(&right_counts, hash, val);
 
-                if left_count > right_count {
-                    for _ in 0..(left_count - right_count) {
-                        ops.push(DiffOp::Removed {
-                            path: path.append_multiset_marker(),
-                            value: val.clone(),
-                        });
-                    }
+            if left_count > right_count {
+                for _ in 0..(left_count - right_count) {
+                    ops.push(DiffOp::Removed {
+                        path: path.append_multiset_marker(),
+                        value: val.clone(),
+                    });
                 }
-                processed_hashes.push(hash);
             }
+            processed.insert(hash);
         }
     }
 
     // Process right values for additions
-    processed_hashes.clear();
+    processed.clear();
     for val in right {
         let hash = compute_value_hash(val);
-        if is_first_occurrence_in_count_map(&right_counts, hash, val) {
+        if !processed.contains(&hash) && is_first_occurrence_in_count_map(&right_counts, hash, val)
+        {
             let left_count = get_count(&left_counts, hash, val);
             let right_count = get_count(&right_counts, hash, val);
 
@@ -251,7 +249,7 @@ pub fn diff_arrays_as_multiset(
                     });
                 }
             }
-            processed_hashes.push(hash);
+            processed.insert(hash);
         }
     }
 
@@ -420,16 +418,6 @@ fn is_first_occurrence_in_count_map(
             .unwrap_or(false),
         None => false,
     }
-}
-
-/// Check if we've already processed a value with this hash
-fn is_hash_processed_for_value(
-    _map: &HashMap<u64, Vec<(&Value, usize)>>,
-    processed: &[u64],
-    hash: u64,
-    _value: &Value,
-) -> bool {
-    processed.contains(&hash)
 }
 
 /// Wrapper for Value to implement Hash and Eq for similar crate
