@@ -1,10 +1,12 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use sonic_rs::Value;
 
-// Import from the jsondiff crate
 use jsondiff::diff::engine::DiffEngine;
 use jsondiff::diff::types::{ArrayCompareMode, DiffConfig};
-use jsondiff::parser::json::JsonParser;
+
+// ============================================================================
+// Data Generators
+// ============================================================================
 
 /// Generate a JSON object with n keys
 fn generate_object(n: usize) -> String {
@@ -34,7 +36,7 @@ fn generate_nested(depth: usize, breadth: usize) -> String {
     format!("{{{}}}", parts.join(", "))
 }
 
-/// Generate two similar objects with some differences
+/// Generate two objects with specified percentage of differences
 fn generate_diff_pair(n: usize, diff_percent: usize) -> (String, String) {
     let diff_count = (n * diff_percent) / 100;
 
@@ -53,62 +55,22 @@ fn generate_diff_pair(n: usize, diff_percent: usize) -> (String, String) {
     (format!("{{{}}}", parts1.join(", ")), format!("{{{}}}", parts2.join(", ")))
 }
 
-fn bench_parsing(c: &mut Criterion) {
-    let mut group = c.benchmark_group("json_parsing");
+/// Generate two completely different objects (worst case)
+fn generate_completely_different(n: usize) -> (String, String) {
+    let mut parts1 = Vec::with_capacity(n);
+    let mut parts2 = Vec::with_capacity(n);
 
-    // Test different object sizes
-    for size in [10, 100, 1000, 10000].iter() {
-        let json = generate_object(*size);
-        let bytes = json.as_bytes();
-
-        group.throughput(Throughput::Bytes(bytes.len() as u64));
-        group.bench_with_input(
-            BenchmarkId::new("object", size),
-            &json,
-            |b, json| {
-                b.iter(|| {
-                    let _: Value = sonic_rs::from_str(black_box(json)).unwrap();
-                });
-            },
-        );
+    for i in 0..n {
+        parts1.push(format!(r#""old_key_{}": "old_value_{}""#, i, i));
+        parts2.push(format!(r#""new_key_{}": "new_value_{}""#, i, i));
     }
 
-    // Test different array sizes
-    for size in [10, 100, 1000, 10000].iter() {
-        let json = generate_array(*size);
-        let bytes = json.as_bytes();
-
-        group.throughput(Throughput::Bytes(bytes.len() as u64));
-        group.bench_with_input(
-            BenchmarkId::new("array", size),
-            &json,
-            |b, json| {
-                b.iter(|| {
-                    let _: Value = sonic_rs::from_str(black_box(json)).unwrap();
-                });
-            },
-        );
-    }
-
-    // Test nested structures
-    for depth in [2, 4, 6].iter() {
-        let json = generate_nested(*depth, 4);
-        let bytes = json.as_bytes();
-
-        group.throughput(Throughput::Bytes(bytes.len() as u64));
-        group.bench_with_input(
-            BenchmarkId::new("nested_depth", depth),
-            &json,
-            |b, json| {
-                b.iter(|| {
-                    let _: Value = sonic_rs::from_str(black_box(json)).unwrap();
-                });
-            },
-        );
-    }
-
-    group.finish();
+    (format!("{{{}}}", parts1.join(", ")), format!("{{{}}}", parts2.join(", ")))
 }
+
+// ============================================================================
+// Object Diff Benchmarks
+// ============================================================================
 
 fn bench_diff_objects(c: &mut Criterion) {
     let mut group = c.benchmark_group("diff_objects");
@@ -119,7 +81,7 @@ fn bench_diff_objects(c: &mut Criterion) {
     };
     let engine = DiffEngine::new(config);
 
-    // Benchmark identical objects (best case)
+    // Benchmark identical objects (best case - tests short-circuit)
     for size in [10, 100, 1000].iter() {
         let json = generate_object(*size);
         let left: Value = sonic_rs::from_str(&json).unwrap();
@@ -127,11 +89,9 @@ fn bench_diff_objects(c: &mut Criterion) {
 
         group.bench_with_input(
             BenchmarkId::new("identical", size),
-            &(left.clone(), right.clone()),
+            &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| {
-                    engine.diff(black_box(left), black_box(right))
-                });
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
             },
         );
     }
@@ -144,11 +104,9 @@ fn bench_diff_objects(c: &mut Criterion) {
 
         group.bench_with_input(
             BenchmarkId::new("10pct_diff", size),
-            &(left.clone(), right.clone()),
+            &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| {
-                    engine.diff(black_box(left), black_box(right))
-                });
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
             },
         );
     }
@@ -161,17 +119,34 @@ fn bench_diff_objects(c: &mut Criterion) {
 
         group.bench_with_input(
             BenchmarkId::new("50pct_diff", size),
-            &(left.clone(), right.clone()),
+            &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| {
-                    engine.diff(black_box(left), black_box(right))
-                });
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+            },
+        );
+    }
+
+    // Benchmark completely different objects (worst case)
+    for size in [10, 100, 1000].iter() {
+        let (json1, json2) = generate_completely_different(*size);
+        let left: Value = sonic_rs::from_str(&json1).unwrap();
+        let right: Value = sonic_rs::from_str(&json2).unwrap();
+
+        group.bench_with_input(
+            BenchmarkId::new("100pct_diff_worst", size),
+            &(&left, &right),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
             },
         );
     }
 
     group.finish();
 }
+
+// ============================================================================
+// Array Diff Benchmarks
+// ============================================================================
 
 fn bench_diff_arrays(c: &mut Criterion) {
     let mut group = c.benchmark_group("diff_arrays");
@@ -190,11 +165,17 @@ fn bench_diff_arrays(c: &mut Criterion) {
     };
     let set_engine = DiffEngine::new(set_config);
 
-    // Benchmark ordered array diff
-    for size in [10, 100, 500].iter() {
+    // MultiSet array comparison
+    let multiset_config = DiffConfig {
+        array_mode: ArrayCompareMode::MultiSet,
+        ordered_objects: false,
+    };
+    let multiset_engine = DiffEngine::new(multiset_config);
+
+    // Benchmark ordered array diff (with 10% elements changed)
+    for size in [10, 100, 500, 1000].iter() {
         let json1 = generate_array(*size);
         let json2 = {
-            // Create array with some elements changed
             let elements: Vec<String> = (0..*size)
                 .map(|i| if i % 10 == 0 { (i + 1000).to_string() } else { i.to_string() })
                 .collect();
@@ -206,19 +187,19 @@ fn bench_diff_arrays(c: &mut Criterion) {
 
         group.bench_with_input(
             BenchmarkId::new("ordered", size),
-            &(left.clone(), right.clone()),
+            &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| {
-                    ordered_engine.diff(black_box(left), black_box(right))
-                });
+                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)));
             },
         );
     }
 
-    // Benchmark set array diff (same elements, different order)
-    for size in [10, 100, 500].iter() {
+    // Benchmark set mode with actual differences (some elements only in one side)
+    for size in [10, 100, 500, 1000].iter() {
+        // First array: 0..size
+        // Second array: size/2..size*3/2 (50% overlap)
         let elements1: Vec<String> = (0..*size).map(|i| i.to_string()).collect();
-        let elements2: Vec<String> = (0..*size).rev().map(|i| i.to_string()).collect();
+        let elements2: Vec<String> = (size / 2..size + size / 2).map(|i| i.to_string()).collect();
 
         let json1 = format!("[{}]", elements1.join(", "));
         let json2 = format!("[{}]", elements2.join(", "));
@@ -227,18 +208,41 @@ fn bench_diff_arrays(c: &mut Criterion) {
         let right: Value = sonic_rs::from_str(&json2).unwrap();
 
         group.bench_with_input(
-            BenchmarkId::new("set_reversed", size),
-            &(left.clone(), right.clone()),
+            BenchmarkId::new("set_50pct_overlap", size),
+            &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| {
-                    set_engine.diff(black_box(left), black_box(right))
-                });
+                b.iter(|| set_engine.diff(black_box(*left), black_box(*right)));
+            },
+        );
+    }
+
+    // Benchmark multiset mode with duplicates
+    for size in [10, 100, 500, 1000].iter() {
+        // Arrays with duplicates and different counts
+        let elements1: Vec<String> = (0..*size).map(|i| (i % 10).to_string()).collect();
+        let elements2: Vec<String> = (0..*size).map(|i| ((i + 1) % 10).to_string()).collect();
+
+        let json1 = format!("[{}]", elements1.join(", "));
+        let json2 = format!("[{}]", elements2.join(", "));
+
+        let left: Value = sonic_rs::from_str(&json1).unwrap();
+        let right: Value = sonic_rs::from_str(&json2).unwrap();
+
+        group.bench_with_input(
+            BenchmarkId::new("multiset_with_dupes", size),
+            &(&left, &right),
+            |b, (left, right)| {
+                b.iter(|| multiset_engine.diff(black_box(*left), black_box(*right)));
             },
         );
     }
 
     group.finish();
 }
+
+// ============================================================================
+// Nested Structure Diff Benchmarks
+// ============================================================================
 
 fn bench_nested_diff(c: &mut Criterion) {
     let mut group = c.benchmark_group("diff_nested");
@@ -259,11 +263,9 @@ fn bench_nested_diff(c: &mut Criterion) {
 
         group.bench_with_input(
             BenchmarkId::new("depth", depth),
-            &(left.clone(), right.clone()),
+            &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| {
-                    engine.diff(black_box(left), black_box(right))
-                });
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
             },
         );
     }
@@ -273,7 +275,6 @@ fn bench_nested_diff(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    bench_parsing,
     bench_diff_objects,
     bench_diff_arrays,
     bench_nested_diff,

@@ -167,6 +167,57 @@ Options:
 - `3`: Invalid JSON
 - `4`: File read error
 
+## Performance
+
+Benchmark results on a typical development machine (run `cargo bench` to reproduce):
+
+### Object Comparison
+
+| Size | Identical | 10% Different | 50% Different | 100% Different |
+|------|-----------|---------------|---------------|----------------|
+| 10 keys | 0.85 µs | 3.1 µs | 3.5 µs | 4.5 µs |
+| 100 keys | 50 µs | 70 µs | 74 µs | 95 µs |
+| 1000 keys | 4.0 ms | 4.5 ms | 4.8 ms | 4.7 ms |
+
+### Array Comparison
+
+| Size | Ordered (Myers) | Set Mode | Multiset Mode |
+|------|-----------------|----------|---------------|
+| 10 elements | 2.6 µs | 25 µs | 28 µs |
+| 100 elements | 86 µs | 2.1 ms | 117 µs |
+| 500 elements | 937 µs | 53 ms | 502 µs |
+| 1000 elements | 2.9 ms | 204 ms | 982 µs |
+
+### Nested Structures
+
+| Depth | Time |
+|-------|------|
+| 2 levels | 4.4 µs |
+| 4 levels | 58 µs |
+| 6 levels | 641 µs |
+
+**Notes:**
+- Ordered array comparison uses the Myers diff algorithm, which is O(n*d) where d is the edit distance
+- Set mode has O(n²) complexity for deep equality checks on each element pair
+- Multiset mode uses hash-based counting, making it faster than set mode for large arrays
+- Object comparison is O(n) for key iteration plus recursive comparison of values
+
+### Running Benchmarks
+
+```bash
+# Run all benchmarks
+cargo bench
+
+# Run specific benchmark group
+cargo bench -- diff_objects
+cargo bench -- diff_arrays
+cargo bench -- diff_nested
+
+# Memory profiling (use external tools)
+heaptrack ./target/release/jsondiff file1.json file2.json
+valgrind --tool=dhat ./target/release/jsondiff file1.json file2.json
+```
+
 ## Future Features
 
 The following features are planned but not yet implemented:
