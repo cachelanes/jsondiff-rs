@@ -1,0 +1,14 @@
+---
+source: tests/snapshots.rs
+expression: output
+---
+$.version
+- 1
++ 2
+
+$.enabled
+- true
++ false
+
+$.added
++ "new field"

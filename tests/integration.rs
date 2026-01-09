@@ -340,6 +340,70 @@ fn test_deeply_nested() {
 }
 
 // ============================================================================
+// Determinism Tests
+// ============================================================================
+
+#[test]
+fn test_output_is_deterministic() {
+    // Run the same diff multiple times and verify output is identical.
+    // This catches non-determinism from HashSet iteration order.
+    // Use an object with many keys to increase likelihood of detecting issues.
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    // Create objects with many keys - non-deterministic iteration would likely
+    // produce different orderings across runs
+    writeln!(
+        file1,
+        r#"{{
+            "alpha": 1, "bravo": 2, "charlie": 3, "delta": 4, "echo": 5,
+            "foxtrot": 6, "golf": 7, "hotel": 8, "india": 9, "juliet": 10,
+            "kilo": 11, "lima": 12, "mike": 13, "november": 14, "oscar": 15,
+            "papa": 16, "quebec": 17, "romeo": 18, "sierra": 19, "tango": 20,
+            "nested": {{"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}}
+        }}"#
+    )
+    .unwrap();
+
+    writeln!(
+        file2,
+        r#"{{
+            "alpha": 100, "bravo": 2, "charlie": 300, "delta": 4, "echo": 500,
+            "foxtrot": 6, "golf": 700, "hotel": 8, "india": 900, "juliet": 10,
+            "kilo": 1100, "lima": 12, "mike": 1300, "november": 14, "oscar": 1500,
+            "papa": 16, "quebec": 1700, "romeo": 18, "sierra": 1900, "tango": 20,
+            "nested": {{"a": 100, "b": 2, "c": 300, "d": 4, "e": 500}},
+            "new_key": "added"
+        }}"#
+    )
+    .unwrap();
+
+    let mut outputs = Vec::new();
+    for _ in 0..20 {
+        let output = jsondiff()
+            .args([
+                file1.path().to_str().unwrap(),
+                file2.path().to_str().unwrap(),
+            ])
+            .args(["--no-color", "-f", "json"])
+            .output()
+            .expect("Failed to execute command");
+
+        outputs.push(String::from_utf8_lossy(&output.stdout).to_string());
+    }
+
+    // All outputs must be identical
+    let first = &outputs[0];
+    for (i, output) in outputs.iter().enumerate().skip(1) {
+        assert_eq!(
+            first, output,
+            "Output differed between run 1 and run {} - non-deterministic output detected",
+            i + 1
+        );
+    }
+}
+
+// ============================================================================
 // Object Comparison Mode Tests
 // ============================================================================
 

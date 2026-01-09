@@ -1,10 +1,11 @@
 use super::engine::diff_values;
 use super::types::{DiffConfig, DiffOp, JsonPath};
 use sonic_rs::{JsonContainerTrait, JsonValueTrait, Object, Value};
-use std::collections::HashSet;
 
 /// Compare two JSON objects
 /// By default, objects are compared unordered (keys matched by name)
+/// Output order follows the input JSON structure (left file for removed/common keys,
+/// right file for added keys) for deterministic, intuitive results.
 pub fn diff_objects(
     left: &Object,
     right: &Object,
@@ -13,46 +14,71 @@ pub fn diff_objects(
 ) -> Vec<DiffOp> {
     let mut ops = Vec::new();
 
-    let left_keys: HashSet<&str> = left.iter().map(|(k, _)| k).collect();
-    let right_keys: HashSet<&str> = right.iter().map(|(k, _)| k).collect();
-
-    // Keys only in left (removed)
-    for key in left_keys.difference(&right_keys) {
-        let child_path = path.append_key(key);
-        ops.push(DiffOp::Removed {
-            path: child_path,
-            value: left.get(key).unwrap().clone(),
-        });
-    }
-
-    // Keys only in right (added)
-    for key in right_keys.difference(&left_keys) {
-        let child_path = path.append_key(key);
-        ops.push(DiffOp::Added {
-            path: child_path,
-            value: right.get(key).unwrap().clone(),
-        });
-    }
-
-    // Keys in both (recurse or check order)
     if config.ordered_objects {
-        // Compare in order - if keys are in different positions, treat as modified
-        let left_order: Vec<&str> = left.iter().map(|(k, _)| k).collect();
-        let right_order: Vec<&str> = right.iter().map(|(k, _)| k).collect();
+        diff_objects_ordered(left, right, path, config, &mut ops);
+    } else {
+        diff_objects_unordered(left, right, path, config, &mut ops);
+    }
 
-        // Only compare common keys
-        let common_keys: HashSet<&str> = left_keys.intersection(&right_keys).copied().collect();
+    ops
+}
 
-        for key in &common_keys {
-            let left_pos = left_order.iter().position(|k| k == key);
-            let right_pos = right_order.iter().position(|k| k == key);
+/// Unordered object comparison - preserves source JSON key order for deterministic output
+fn diff_objects_unordered(
+    left: &Object,
+    right: &Object,
+    path: &JsonPath,
+    config: &DiffConfig,
+    ops: &mut Vec<DiffOp>,
+) {
+    // Process keys in left object order: removed keys and common keys
+    for (key, left_val) in left.iter() {
+        let child_path = path.append_key(key);
+        if let Some(right_val) = right.get(&key.to_string()) {
+            // Common key - recurse to compare values
+            ops.extend(diff_values(left_val, right_val, &child_path, config));
+        } else {
+            // Key only in left - removed
+            ops.push(DiffOp::Removed {
+                path: child_path,
+                value: left_val.clone(),
+            });
+        }
+    }
+
+    // Process keys only in right object (added) - in right's order
+    for (key, right_val) in right.iter() {
+        if left.get(&key.to_string()).is_none() {
+            let child_path = path.append_key(key);
+            ops.push(DiffOp::Added {
+                path: child_path,
+                value: right_val.clone(),
+            });
+        }
+    }
+}
+
+/// Ordered object comparison - keys must appear in the same position
+fn diff_objects_ordered(
+    left: &Object,
+    right: &Object,
+    path: &JsonPath,
+    config: &DiffConfig,
+    ops: &mut Vec<DiffOp>,
+) {
+    let left_order: Vec<&str> = left.iter().map(|(k, _)| k).collect();
+    let right_order: Vec<&str> = right.iter().map(|(k, _)| k).collect();
+
+    // Process keys in left object order
+    for (key, left_val) in left.iter() {
+        let child_path = path.append_key(key);
+        if let Some(right_val) = right.get(&key.to_string()) {
+            // Common key - check position
+            let left_pos = left_order.iter().position(|k| *k == key);
+            let right_pos = right_order.iter().position(|k| *k == key);
 
             if left_pos != right_pos {
-                // Key position changed - report as modified
-                let child_path = path.append_key(key);
-                let left_val = left.get(key).unwrap();
-                let right_val = right.get(key).unwrap();
-
+                // Key position changed - report as modified if values also differ
                 if !values_equal(left_val, right_val) {
                     ops.push(DiffOp::Modified {
                         path: child_path,
@@ -61,24 +87,28 @@ pub fn diff_objects(
                     });
                 }
             } else {
-                // Same position, recurse
-                let child_path = path.append_key(key);
-                let left_val = left.get(key).unwrap();
-                let right_val = right.get(key).unwrap();
+                // Same position - recurse
                 ops.extend(diff_values(left_val, right_val, &child_path, config));
             }
-        }
-    } else {
-        // Unordered comparison - just compare values for common keys
-        for key in left_keys.intersection(&right_keys) {
-            let child_path = path.append_key(key);
-            let left_val = left.get(key).unwrap();
-            let right_val = right.get(key).unwrap();
-            ops.extend(diff_values(left_val, right_val, &child_path, config));
+        } else {
+            // Key only in left - removed
+            ops.push(DiffOp::Removed {
+                path: child_path,
+                value: left_val.clone(),
+            });
         }
     }
 
-    ops
+    // Process keys only in right object (added) - in right's order
+    for (key, right_val) in right.iter() {
+        if left.get(&key.to_string()).is_none() {
+            let child_path = path.append_key(key);
+            ops.push(DiffOp::Added {
+                path: child_path,
+                value: right_val.clone(),
+            });
+        }
+    }
 }
 
 /// Check if two values are equal (deep comparison)

@@ -1,0 +1,27 @@
+---
+source: tests/snapshots.rs
+expression: output
+---
+$.user.name
+- "Alice"
++ "Bob"
+
+$.user.settings.theme
+- "dark"
++ "light"
+
+$.user.settings.language
++ "en"
+
+$.items[1]
+- {
+-     "id": 2,
+-     "name": "second"
+-   }
++ {
++     "id": 3,
++     "name": "third"
++   }
+
+----------------------------------------
+1 added, 0 removed, 3 modified

@@ -1,0 +1,42 @@
+---
+source: tests/snapshots.rs
+expression: output
+---
+{
+  "operations": [
+    {
+      "op": "replace",
+      "path": "$.user.name",
+      "oldValue": "Alice",
+      "newValue": "Bob"
+    },
+    {
+      "op": "replace",
+      "path": "$.user.settings.theme",
+      "oldValue": "dark",
+      "newValue": "light"
+    },
+    {
+      "op": "add",
+      "path": "$.user.settings.language",
+      "value": "en"
+    },
+    {
+      "op": "replace",
+      "path": "$.items[1]",
+      "oldValue": {
+        "id": 2,
+        "name": "second"
+      },
+      "newValue": {
+        "id": 3,
+        "name": "third"
+      }
+    }
+  ],
+  "stats": {
+    "added": 1,
+    "removed": 0,
+    "modified": 3
+  }
+}
