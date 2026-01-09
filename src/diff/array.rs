@@ -2,7 +2,13 @@ use super::engine::diff_values;
 use super::object::values_equal;
 use super::types::{DiffConfig, DiffOp, JsonPath};
 use sonic_rs::{JsonContainerTrait, JsonValueTrait, Value};
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+
+/// Threshold for using HashMap vs linear search for set/multiset operations.
+/// Below this size, linear search is faster due to cache locality.
+const HASHMAP_THRESHOLD: usize = 20;
 
 /// Compare arrays preserving order using a simple LCS-based approach
 pub fn diff_arrays_ordered(
@@ -105,9 +111,50 @@ pub fn diff_arrays_as_set(
     path: &JsonPath,
     _config: &DiffConfig,
 ) -> Vec<DiffOp> {
+    // For small arrays, use linear search (cache-friendly)
+    if left.len() < HASHMAP_THRESHOLD && right.len() < HASHMAP_THRESHOLD {
+        return diff_arrays_as_set_linear(left, right, path);
+    }
+
     let mut ops = Vec::new();
 
-    // Build sets using our custom equality
+    // Build hash maps for O(1) average lookups
+    // Map: hash -> list of values (to handle collisions)
+    let left_map = build_value_set(left);
+    let right_map = build_value_set(right);
+
+    // Find elements only in left (removed) - iterate in input order for determinism
+    for val in left {
+        let hash = compute_value_hash(val);
+        // Only process first occurrence of each unique value
+        if is_first_occurrence_in_map(&left_map, hash, val) && !set_contains(&right_map, hash, val) {
+            ops.push(DiffOp::Removed {
+                path: path.append_set_marker(),
+                value: val.clone(),
+            });
+        }
+    }
+
+    // Find elements only in right (added) - iterate in input order for determinism
+    for val in right {
+        let hash = compute_value_hash(val);
+        // Only process first occurrence of each unique value
+        if is_first_occurrence_in_map(&right_map, hash, val) && !set_contains(&left_map, hash, val) {
+            ops.push(DiffOp::Added {
+                path: path.append_set_marker(),
+                value: val.clone(),
+            });
+        }
+    }
+
+    ops
+}
+
+/// Linear set comparison for small arrays
+fn diff_arrays_as_set_linear(left: &[Value], right: &[Value], path: &JsonPath) -> Vec<DiffOp> {
+    let mut ops = Vec::new();
+
+    // Build sets using linear search
     let mut left_set: Vec<&Value> = Vec::new();
     for val in left {
         if !left_set.iter().any(|v| values_equal(v, val)) {
@@ -122,7 +169,7 @@ pub fn diff_arrays_as_set(
         }
     }
 
-    // Find elements only in left (removed)
+    // Find removed (in left order)
     for val in &left_set {
         if !right_set.iter().any(|v| values_equal(v, val)) {
             ops.push(DiffOp::Removed {
@@ -132,7 +179,7 @@ pub fn diff_arrays_as_set(
         }
     }
 
-    // Find elements only in right (added)
+    // Find added (in right order)
     for val in &right_set {
         if !left_set.iter().any(|v| values_equal(v, val)) {
             ops.push(DiffOp::Added {
@@ -152,11 +199,75 @@ pub fn diff_arrays_as_multiset(
     path: &JsonPath,
     _config: &DiffConfig,
 ) -> Vec<DiffOp> {
+    // For small arrays, use linear search (cache-friendly)
+    if left.len() < HASHMAP_THRESHOLD && right.len() < HASHMAP_THRESHOLD {
+        return diff_arrays_as_multiset_linear(left, right, path);
+    }
+
     let mut ops = Vec::new();
 
-    // Count occurrences using a list-based approach for proper equality
-    let left_counts = count_values(left);
-    let right_counts = count_values(right);
+    // Count occurrences using hash-based approach
+    let left_counts = count_values_hashmap(left);
+    let right_counts = count_values_hashmap(right);
+
+    // Process left values in input order for determinism
+    let mut processed_hashes: Vec<u64> = Vec::new();
+    for val in left {
+        let hash = compute_value_hash(val);
+        // Only process first occurrence of each unique value
+        if !processed_hashes.contains(&hash)
+            || !is_hash_processed_for_value(&left_counts, &processed_hashes, hash, val)
+        {
+            if is_first_occurrence_in_count_map(&left_counts, hash, val) {
+                let left_count = get_count(&left_counts, hash, val);
+                let right_count = get_count(&right_counts, hash, val);
+
+                if left_count > right_count {
+                    for _ in 0..(left_count - right_count) {
+                        ops.push(DiffOp::Removed {
+                            path: path.append_multiset_marker(),
+                            value: val.clone(),
+                        });
+                    }
+                }
+                processed_hashes.push(hash);
+            }
+        }
+    }
+
+    // Process right values for additions
+    processed_hashes.clear();
+    for val in right {
+        let hash = compute_value_hash(val);
+        if is_first_occurrence_in_count_map(&right_counts, hash, val) {
+            let left_count = get_count(&left_counts, hash, val);
+            let right_count = get_count(&right_counts, hash, val);
+
+            if right_count > left_count {
+                for _ in 0..(right_count - left_count) {
+                    ops.push(DiffOp::Added {
+                        path: path.append_multiset_marker(),
+                        value: val.clone(),
+                    });
+                }
+            }
+            processed_hashes.push(hash);
+        }
+    }
+
+    ops
+}
+
+/// Linear multiset comparison for small arrays
+fn diff_arrays_as_multiset_linear(
+    left: &[Value],
+    right: &[Value],
+    path: &JsonPath,
+) -> Vec<DiffOp> {
+    let mut ops = Vec::new();
+
+    let left_counts = count_values_linear(left);
+    let right_counts = count_values_linear(right);
 
     // Collect all unique values
     let mut all_values: Vec<&Value> = Vec::new();
@@ -204,8 +315,8 @@ pub fn diff_arrays_as_multiset(
     ops
 }
 
-/// Count occurrences of each value in an array
-fn count_values(values: &[Value]) -> Vec<(&Value, usize)> {
+/// Count occurrences using linear search (for small arrays)
+fn count_values_linear(values: &[Value]) -> Vec<(&Value, usize)> {
     let mut counts: Vec<(&Value, usize)> = Vec::new();
     for val in values {
         if let Some((_, count)) = counts.iter_mut().find(|(v, _)| values_equal(v, val)) {
@@ -215,6 +326,110 @@ fn count_values(values: &[Value]) -> Vec<(&Value, usize)> {
         }
     }
     counts
+}
+
+// ============================================================================
+// Hash-based helper functions for O(1) lookups
+// ============================================================================
+
+/// Compute hash for a JSON value
+fn compute_value_hash(value: &Value) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    hash_value(value, &mut hasher);
+    hasher.finish()
+}
+
+/// Build a hash map for set operations (deduplicates values)
+/// Returns: hash -> Vec<&Value> (multiple values possible due to collisions)
+fn build_value_set(values: &[Value]) -> HashMap<u64, Vec<&Value>> {
+    let mut map: HashMap<u64, Vec<&Value>> = HashMap::new();
+
+    for val in values {
+        let hash = compute_value_hash(val);
+        let entry = map.entry(hash).or_default();
+        // Deduplicate within same hash bucket
+        if !entry.iter().any(|v| values_equal(v, val)) {
+            entry.push(val);
+        }
+    }
+
+    map
+}
+
+/// Check if a value exists in the set (handles hash collisions)
+fn set_contains(map: &HashMap<u64, Vec<&Value>>, hash: u64, value: &Value) -> bool {
+    match map.get(&hash) {
+        Some(vals) => vals.iter().any(|v| values_equal(v, value)),
+        None => false,
+    }
+}
+
+/// Check if this is the first occurrence of the value in the map
+fn is_first_occurrence_in_map(map: &HashMap<u64, Vec<&Value>>, hash: u64, value: &Value) -> bool {
+    match map.get(&hash) {
+        Some(vals) => {
+            // Find the first value that equals this one
+            vals.first().map(|v| values_equal(v, value)).unwrap_or(false)
+        }
+        None => false,
+    }
+}
+
+/// Count occurrences using hash-based approach
+/// Returns: hash -> Vec<(&Value, count)>
+fn count_values_hashmap(values: &[Value]) -> HashMap<u64, Vec<(&Value, usize)>> {
+    let mut map: HashMap<u64, Vec<(&Value, usize)>> = HashMap::new();
+
+    for val in values {
+        let hash = compute_value_hash(val);
+        let entry = map.entry(hash).or_default();
+
+        // Find existing count for this exact value (handling collisions)
+        if let Some((_, count)) = entry.iter_mut().find(|(v, _)| values_equal(v, val)) {
+            *count += 1;
+        } else {
+            entry.push((val, 1));
+        }
+    }
+
+    map
+}
+
+/// Get count of a value from the count map
+fn get_count(map: &HashMap<u64, Vec<(&Value, usize)>>, hash: u64, value: &Value) -> usize {
+    match map.get(&hash) {
+        Some(entries) => entries
+            .iter()
+            .find(|(v, _)| values_equal(v, value))
+            .map(|(_, c)| *c)
+            .unwrap_or(0),
+        None => 0,
+    }
+}
+
+/// Check if this is the first occurrence in the count map
+fn is_first_occurrence_in_count_map(
+    map: &HashMap<u64, Vec<(&Value, usize)>>,
+    hash: u64,
+    value: &Value,
+) -> bool {
+    match map.get(&hash) {
+        Some(entries) => entries
+            .first()
+            .map(|(v, _)| values_equal(v, value))
+            .unwrap_or(false),
+        None => false,
+    }
+}
+
+/// Check if we've already processed a value with this hash
+fn is_hash_processed_for_value(
+    _map: &HashMap<u64, Vec<(&Value, usize)>>,
+    processed: &[u64],
+    hash: u64,
+    _value: &Value,
+) -> bool {
+    processed.contains(&hash)
 }
 
 /// Wrapper for Value to implement Hash and Eq for similar crate
