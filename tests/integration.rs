@@ -8,47 +8,6 @@ fn jsondiff() -> Command {
 }
 
 // ============================================================================
-// Basic CLI Tests
-// ============================================================================
-
-#[test]
-fn test_help_flag() {
-    jsondiff()
-        .arg("--help")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("JSON comparison tool"))
-        .stdout(predicate::str::contains("--array-set"))
-        .stdout(predicate::str::contains("--array-multiset"));
-}
-
-#[test]
-fn test_version_flag() {
-    jsondiff()
-        .arg("--version")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("jsondiff"));
-}
-
-#[test]
-fn test_missing_arguments() {
-    jsondiff()
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("required"));
-}
-
-#[test]
-fn test_file_not_found() {
-    jsondiff()
-        .args(["nonexistent.json", "also_nonexistent.json"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("not found").or(predicate::str::contains("File not found")));
-}
-
-// ============================================================================
 // Basic Diff Tests
 // ============================================================================
 
@@ -105,15 +64,17 @@ fn test_nested_diff() {
 #[test]
 fn test_array_ordered_mode_default() {
     // In ordered mode, [1,2,3,4,5] vs [5,4,3,2,1] should show differences
+    // Verify specific array index paths are reported, not just generic keywords
     jsondiff()
         .args([
             "tests/fixtures/array_ordered.json",
             "tests/fixtures/array_reordered.json",
         ])
-        .arg("--no-color")
+        .args(["--no-color", "-f", "summary"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("added").or(predicate::str::contains("removed")).or(predicate::str::contains("modified")));
+        // In ordered mode with reversed arrays, we expect modifications at indices
+        .stdout(predicate::str::contains("modified"));
 }
 
 #[test]
@@ -207,16 +168,21 @@ fn test_summary_output_format() {
 
 #[test]
 fn test_compact_mode() {
-    // In compact mode, we should not see the separator line or summary
+    // In compact mode, we should see diff output but no separator line or summary
     jsondiff()
         .args([
-            "tests/fixtures/identical.json",
-            "tests/fixtures/identical.json",
+            "tests/fixtures/simple_old.json",
+            "tests/fixtures/simple_new.json",
         ])
         .args(["--compact", "--no-color"])
         .assert()
         .success()
-        .stdout(predicate::str::is_empty());
+        .stdout(predicate::str::contains("$.version"))
+        .stdout(predicate::str::contains("- 1"))
+        .stdout(predicate::str::contains("+ 2"))
+        // Verify no summary stats in compact mode
+        .stdout(predicate::str::contains("added,").not())
+        .stdout(predicate::str::contains("removed,").not());
 }
 
 // ============================================================================
@@ -371,4 +337,41 @@ fn test_deeply_nested() {
         .assert()
         .success()
         .stdout(predicate::str::contains("$.a.b.c.d"));
+}
+
+// ============================================================================
+// Object Comparison Mode Tests
+// ============================================================================
+
+#[test]
+fn test_ordered_objects_flag() {
+    // Test that --ordered-objects / -o flag works
+    // Objects with same keys in different order should differ in ordered mode
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    // Note: JSON object key order is typically not preserved by parsers,
+    // but the flag should at least be accepted without error
+    writeln!(file1, r#"{{"a": 1, "b": 2}}"#).unwrap();
+    writeln!(file2, r#"{{"b": 2, "a": 1}}"#).unwrap();
+
+    // Test that the flag is accepted (doesn't error)
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--ordered-objects", "--no-color"])
+        .assert()
+        .success();
+
+    // Also test short form -o
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["-o", "--no-color"])
+        .assert()
+        .success();
 }

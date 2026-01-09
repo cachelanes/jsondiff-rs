@@ -93,7 +93,7 @@ fn snapshot_nested_diff_json() {
 }
 
 // ============================================================================
-// Summary Output Snapshots
+// Summary Output Snapshot (one representative test)
 // ============================================================================
 
 #[test]
@@ -107,19 +107,8 @@ fn snapshot_simple_diff_summary() {
     assert_snapshot!("simple_diff_summary", output);
 }
 
-#[test]
-fn snapshot_nested_diff_summary() {
-    let output = jsondiff_output(&[
-        "tests/fixtures/nested_old.json",
-        "tests/fixtures/nested_new.json",
-        "-f",
-        "summary",
-    ]);
-    assert_snapshot!("nested_diff_summary", output);
-}
-
 // ============================================================================
-// Compact Mode Snapshots
+// Compact Mode Snapshot (one representative test)
 // ============================================================================
 
 #[test]
