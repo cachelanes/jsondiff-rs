@@ -86,9 +86,10 @@ pub fn diff_arrays_ordered(
     }
 
     // Process the middle portion with Myers diff
+    // Phase 3: Use PrehashedWrapper to avoid repeated hash computation
     if !left_middle.is_empty() || !right_middle.is_empty() {
-        let left_wrapped: Vec<ValueWrapper> = left_middle.iter().map(ValueWrapper).collect();
-        let right_wrapped: Vec<ValueWrapper> = right_middle.iter().map(ValueWrapper).collect();
+        let left_wrapped: Vec<PrehashedWrapper> = left_middle.iter().map(PrehashedWrapper::new).collect();
+        let right_wrapped: Vec<PrehashedWrapper> = right_middle.iter().map(PrehashedWrapper::new).collect();
 
         let changes = similar::capture_diff_slices(
             similar::Algorithm::Myers,
@@ -501,6 +502,8 @@ fn is_first_occurrence_in_count_map(
 }
 
 /// Wrapper for Value to implement Hash and Eq for similar crate
+/// Note: Kept for potential external use, but ordered mode now uses PrehashedWrapper
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct ValueWrapper<'a>(pub &'a Value);
 
@@ -569,6 +572,60 @@ fn hash_value<H: Hasher>(value: &Value, state: &mut H) {
                 }
             }
         }
+    }
+}
+
+// ============================================================================
+// Phase 3: PrehashedWrapper for hash acceleration
+// ============================================================================
+
+/// Wrapper that stores a pre-computed hash with the value
+/// This avoids repeated hash computation during Myers diff comparisons
+#[derive(Clone)]
+struct PrehashedWrapper<'a> {
+    value: &'a Value,
+    hash: u64,
+}
+
+impl<'a> PrehashedWrapper<'a> {
+    fn new(value: &'a Value) -> Self {
+        PrehashedWrapper {
+            value,
+            hash: compute_value_hash(value),
+        }
+    }
+}
+
+impl<'a> PartialEq for PrehashedWrapper<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        // Fast path: if hashes differ, values definitely differ
+        if self.hash != other.hash {
+            return false;
+        }
+        // Hashes match, need to verify with deep comparison (handles collisions)
+        values_equal(self.value, other.value)
+    }
+}
+
+impl<'a> Eq for PrehashedWrapper<'a> {}
+
+impl<'a> Hash for PrehashedWrapper<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // Just use the pre-computed hash
+        self.hash.hash(state);
+    }
+}
+
+impl<'a> PartialOrd for PrehashedWrapper<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<'a> Ord for PrehashedWrapper<'a> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Use the pre-computed hash for ordering
+        self.hash.cmp(&other.hash)
     }
 }
 
