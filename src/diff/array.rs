@@ -87,6 +87,8 @@ pub fn diff_arrays_ordered(
 
     // Process the middle portion with Myers diff
     // Phase 3: Use PrehashedWrapper to avoid repeated hash computation
+    // Note: Phase 4 (small array fast path) was tested but prefix/suffix matching
+    // already handles the small array case effectively
     if !left_middle.is_empty() || !right_middle.is_empty() {
         let left_wrapped: Vec<PrehashedWrapper> = left_middle.iter().map(PrehashedWrapper::new).collect();
         let right_wrapped: Vec<PrehashedWrapper> = right_middle.iter().map(PrehashedWrapper::new).collect();
