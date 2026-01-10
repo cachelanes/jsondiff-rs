@@ -17,6 +17,49 @@ pub fn diff_arrays_ordered(
     path: &JsonPath,
     config: &DiffConfig,
 ) -> Vec<DiffOp> {
+    // =========================================================================
+    // Phase 1: Early termination paths
+    // =========================================================================
+
+    // Fast path: both arrays empty
+    if left.is_empty() && right.is_empty() {
+        return vec![];
+    }
+
+    // Fast path: left array empty - all elements are additions
+    if left.is_empty() {
+        return right
+            .iter()
+            .enumerate()
+            .map(|(i, val)| DiffOp::Added {
+                path: path.append_index(i),
+                value: val.clone(),
+            })
+            .collect();
+    }
+
+    // Fast path: right array empty - all elements are removals
+    if right.is_empty() {
+        return left
+            .iter()
+            .enumerate()
+            .map(|(i, val)| DiffOp::Removed {
+                path: path.append_index(i),
+                value: val.clone(),
+            })
+            .collect();
+    }
+
+    // Fast path: arrays identical (hash check + verification)
+    // First compare lengths, then hashes, then deep equality
+    if left.len() == right.len() {
+        let left_hash = compute_array_hash(left);
+        let right_hash = compute_array_hash(right);
+        if left_hash == right_hash && arrays_equal(left, right) {
+            return vec![];
+        }
+    }
+
     let mut ops = Vec::new();
 
     // Create wrappers for comparison
@@ -490,4 +533,26 @@ fn hash_value<H: Hasher>(value: &Value, state: &mut H) {
             }
         }
     }
+}
+
+// ============================================================================
+// Helper functions for early termination (Phase 1)
+// ============================================================================
+
+/// Compute a combined hash for an entire array
+fn compute_array_hash(values: &[Value]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    values.len().hash(&mut hasher);
+    for val in values {
+        hash_value(val, &mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Check if two arrays are deeply equal element-by-element
+fn arrays_equal(left: &[Value], right: &[Value]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    left.iter().zip(right.iter()).all(|(l, r)| values_equal(l, r))
 }
