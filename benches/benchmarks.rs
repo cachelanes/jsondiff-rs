@@ -209,6 +209,30 @@ fn bench_diff_arrays(c: &mut Criterion) {
         );
     }
 
+    // Benchmark ordered array diff with high similarity (5% diff at end - tests suffix matching)
+    for size in [10, 100, 500, 1000].iter() {
+        let json1 = generate_array(*size);
+        let json2 = {
+            // Change only the last 5% of elements
+            let change_start = (*size * 95) / 100;
+            let elements: Vec<String> = (0..*size)
+                .map(|i| if i >= change_start { (i + 1000).to_string() } else { i.to_string() })
+                .collect();
+            format!("[{}]", elements.join(", "))
+        };
+
+        let left: Value = sonic_rs::from_str(&json1).unwrap();
+        let right: Value = sonic_rs::from_str(&json2).unwrap();
+
+        group.bench_with_input(
+            BenchmarkId::new("ordered_5pct_end_diff", size),
+            &(&left, &right),
+            |b, (left, right)| {
+                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)));
+            },
+        );
+    }
+
     // Benchmark set mode with actual differences (some elements only in one side)
     for size in [10, 100, 500, 1000].iter() {
         // First array: 0..size

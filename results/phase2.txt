@@ -1,0 +1,147 @@
+   Compiling jsondiff v0.1.0 (/home/user/jsondiff-rs)
+warning: function `compute_array_hash` is never used
+   --> src/diff/array.rs:580:4
+    |
+580 | fn compute_array_hash(values: &[Value]) -> u64 {
+    |    ^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `arrays_equal` is never used
+   --> src/diff/array.rs:590:4
+    |
+590 | fn arrays_equal(left: &[Value], right: &[Value]) -> bool {
+    |    ^^^^^^^^^^^^
+
+warning: `jsondiff` (lib) generated 2 warnings
+warning: `jsondiff` (lib) generated 2 warnings (2 duplicates)
+warning: `jsondiff` (bin "jsondiff") generated 2 warnings (2 duplicates)
+    Finished `bench` profile [optimized] target(s) in 33.61s
+     Running benches/benchmarks.rs (target/release/deps/benchmarks-bf9b9e33d9584bb2)
+Gnuplot not found, using plotters backend
+Benchmarking diff_arrays/ordered_identical/10
+Benchmarking diff_arrays/ordered_identical/10: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_identical/10: Collecting 100 samples in estimated 5.0004 s (36M iterations)
+Benchmarking diff_arrays/ordered_identical/10: Analyzing
+diff_arrays/ordered_identical/10
+                        time:   [136.93 ns 139.05 ns 141.43 ns]
+                        change: [+10.379% +12.572% +15.571%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 9 outliers among 100 measurements (9.00%)
+  4 (4.00%) high mild
+  5 (5.00%) high severe
+Benchmarking diff_arrays/ordered_identical/100
+Benchmarking diff_arrays/ordered_identical/100: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_identical/100: Collecting 100 samples in estimated 5.0000 s (4.6M iterations)
+Benchmarking diff_arrays/ordered_identical/100: Analyzing
+diff_arrays/ordered_identical/100
+                        time:   [1.0682 µs 1.0720 µs 1.0762 µs]
+                        change: [+3.9383% +6.0509% +7.6424%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 6 outliers among 100 measurements (6.00%)
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+Benchmarking diff_arrays/ordered_identical/500
+Benchmarking diff_arrays/ordered_identical/500: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_identical/500: Collecting 100 samples in estimated 5.0052 s (965k iterations)
+Benchmarking diff_arrays/ordered_identical/500: Analyzing
+diff_arrays/ordered_identical/500
+                        time:   [5.1738 µs 5.1986 µs 5.2273 µs]
+                        change: [+7.9923% +8.8540% +9.7406%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 7 outliers among 100 measurements (7.00%)
+  5 (5.00%) high mild
+  2 (2.00%) high severe
+Benchmarking diff_arrays/ordered_identical/1000
+Benchmarking diff_arrays/ordered_identical/1000: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_identical/1000: Collecting 100 samples in estimated 5.0287 s (480k iterations)
+Benchmarking diff_arrays/ordered_identical/1000: Analyzing
+diff_arrays/ordered_identical/1000
+                        time:   [10.324 µs 10.443 µs 10.639 µs]
+                        change: [-0.2547% +3.7620% +7.1914%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 5 outliers among 100 measurements (5.00%)
+  5 (5.00%) high severe
+Benchmarking diff_arrays/ordered_10pct_diff/10
+Benchmarking diff_arrays/ordered_10pct_diff/10: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_10pct_diff/10: Collecting 100 samples in estimated 5.0078 s (1.6M iterations)
+Benchmarking diff_arrays/ordered_10pct_diff/10: Analyzing
+diff_arrays/ordered_10pct_diff/10
+                        time:   [3.1400 µs 3.1449 µs 3.1507 µs]
+                        change: [-28.447% -27.865% -27.288%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 17 outliers among 100 measurements (17.00%)
+  6 (6.00%) high mild
+  11 (11.00%) high severe
+Benchmarking diff_arrays/ordered_10pct_diff/100
+Benchmarking diff_arrays/ordered_10pct_diff/100: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_10pct_diff/100: Collecting 100 samples in estimated 5.5195 s (50k iterations)
+Benchmarking diff_arrays/ordered_10pct_diff/100: Analyzing
+diff_arrays/ordered_10pct_diff/100
+                        time:   [113.28 µs 114.78 µs 116.06 µs]
+                        change: [-5.0815% -3.5833% -1.6914%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+Benchmarking diff_arrays/ordered_10pct_diff/500
+Benchmarking diff_arrays/ordered_10pct_diff/500: Warming up for 3.0000 s
+
+Warning: Unable to complete 100 samples in 5.0s. You may wish to increase target time to 6.1s, enable flat sampling, or reduce sample count to 60.
+Benchmarking diff_arrays/ordered_10pct_diff/500: Collecting 100 samples in estimated 6.0757 s (5050 iterations)
+Benchmarking diff_arrays/ordered_10pct_diff/500: Analyzing
+diff_arrays/ordered_10pct_diff/500
+                        time:   [1.2033 ms 1.2084 ms 1.2147 ms]
+                        change: [-0.3880% +0.2357% +0.8540%] (p = 0.48 > 0.05)
+                        No change in performance detected.
+Found 4 outliers among 100 measurements (4.00%)
+  1 (1.00%) high mild
+  3 (3.00%) high severe
+Benchmarking diff_arrays/ordered_10pct_diff/1000
+Benchmarking diff_arrays/ordered_10pct_diff/1000: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_10pct_diff/1000: Collecting 100 samples in estimated 5.3777 s (1400 iterations)
+Benchmarking diff_arrays/ordered_10pct_diff/1000: Analyzing
+diff_arrays/ordered_10pct_diff/1000
+                        time:   [3.8331 ms 3.8499 ms 3.8678 ms]
+                        change: [-1.1962% +1.4040% +3.3964%] (p = 0.26 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+Benchmarking diff_arrays/ordered_5pct_end_diff/10
+Benchmarking diff_arrays/ordered_5pct_end_diff/10: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_5pct_end_diff/10: Collecting 100 samples in estimated 5.0025 s (1.5M iterations)
+Benchmarking diff_arrays/ordered_5pct_end_diff/10: Analyzing
+diff_arrays/ordered_5pct_end_diff/10
+                        time:   [3.3088 µs 3.3302 µs 3.3542 µs]
+Found 14 outliers among 100 measurements (14.00%)
+  12 (12.00%) high mild
+  2 (2.00%) high severe
+Benchmarking diff_arrays/ordered_5pct_end_diff/100
+Benchmarking diff_arrays/ordered_5pct_end_diff/100: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_5pct_end_diff/100: Collecting 100 samples in estimated 5.0291 s (192k iterations)
+Benchmarking diff_arrays/ordered_5pct_end_diff/100: Analyzing
+diff_arrays/ordered_5pct_end_diff/100
+                        time:   [25.890 µs 26.111 µs 26.358 µs]
+Found 7 outliers among 100 measurements (7.00%)
+  6 (6.00%) high mild
+  1 (1.00%) high severe
+Benchmarking diff_arrays/ordered_5pct_end_diff/500
+Benchmarking diff_arrays/ordered_5pct_end_diff/500: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_5pct_end_diff/500: Collecting 100 samples in estimated 5.8994 s (30k iterations)
+Benchmarking diff_arrays/ordered_5pct_end_diff/500: Analyzing
+diff_arrays/ordered_5pct_end_diff/500
+                        time:   [187.25 µs 188.90 µs 191.22 µs]
+Found 17 outliers among 100 measurements (17.00%)
+  8 (8.00%) high mild
+  9 (9.00%) high severe
+Benchmarking diff_arrays/ordered_5pct_end_diff/1000
+Benchmarking diff_arrays/ordered_5pct_end_diff/1000: Warming up for 3.0000 s
+Benchmarking diff_arrays/ordered_5pct_end_diff/1000: Collecting 100 samples in estimated 5.7093 s (10k iterations)
+Benchmarking diff_arrays/ordered_5pct_end_diff/1000: Analyzing
+diff_arrays/ordered_5pct_end_diff/1000
+                        time:   [527.73 µs 529.35 µs 531.15 µs]
+Found 8 outliers among 100 measurements (8.00%)
+  3 (3.00%) high mild
+  5 (5.00%) high severe
+
