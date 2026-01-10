@@ -207,11 +207,6 @@ All modes compared with 50% overlap/difference for fair comparison:
 | 500 elements | 5.3 µs | 114 µs | 172 µs |
 | 1000 elements | 10.8 µs | 211 µs | 414 µs |
 
-**Optimization highlights:**
-- Identical arrays: 330x faster (10.8 µs vs 3.6 ms baseline)
-- High-similarity (5% diff): 17x faster (211 µs vs 3.6 ms baseline)
-- 10% diff spread: 8.7x faster (414 µs vs 3.6 ms baseline)
-
 ### Nested Structures
 
 | Depth | Time |
