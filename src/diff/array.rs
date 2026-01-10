@@ -1,6 +1,7 @@
 use super::engine::diff_values;
 use super::object::values_equal;
 use super::types::{DiffConfig, DiffOp, JsonPath};
+use imara_diff::intern::InternedInput;
 use sonic_rs::{JsonContainerTrait, JsonValueTrait, Value};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -85,94 +86,123 @@ pub fn diff_arrays_ordered(
         ops.extend(diff_values(&left[i], &right[i], &child_path, config));
     }
 
-    // Process the middle portion with Myers diff
-    // Phase 3: Use PrehashedWrapper to avoid repeated hash computation
-    // Note: Phase 4 (small array fast path) was tested but prefix/suffix matching
-    // already handles the small array case effectively
+    // Process the middle portion with diff algorithm
+    // Phase 3: Use pre-computed hashes for fast comparison
+    // Phase 5: Use imara-diff histogram algorithm (faster for spread diffs)
     if !left_middle.is_empty() || !right_middle.is_empty() {
-        let left_wrapped: Vec<PrehashedWrapper> = left_middle.iter().map(PrehashedWrapper::new).collect();
-        let right_wrapped: Vec<PrehashedWrapper> = right_middle.iter().map(PrehashedWrapper::new).collect();
+        // Pre-compute hashes for all elements
+        let left_hashes: Vec<u64> = left_middle.iter().map(compute_value_hash).collect();
+        let right_hashes: Vec<u64> = right_middle.iter().map(compute_value_hash).collect();
 
-        let changes = similar::capture_diff_slices(
-            similar::Algorithm::Myers,
-            &left_wrapped,
-            &right_wrapped,
+        // Use imara-diff with histogram algorithm on hashes
+        let mut input: InternedInput<u64> = InternedInput::default();
+        input.update_before(left_hashes.iter().copied());
+        input.update_after(right_hashes.iter().copied());
+
+        // Collect hunks from imara-diff
+        let mut hunks: Vec<(std::ops::Range<u32>, std::ops::Range<u32>)> = Vec::new();
+        imara_diff::diff(
+            imara_diff::Algorithm::Histogram,
+            &input,
+            |before: std::ops::Range<u32>, after: std::ops::Range<u32>| {
+                hunks.push((before, after));
+            },
         );
 
-        for change in changes {
-            match change {
-                similar::DiffOp::Equal {
-                    old_index,
-                    new_index,
-                    len,
-                } => {
-                    for i in 0..len {
-                        // Adjust indices for prefix offset
-                        let actual_left_idx = prefix_len + old_index + i;
-                        let actual_right_idx = prefix_len + new_index + i;
-                        let child_path = path.append_index(actual_right_idx);
-                        ops.extend(diff_values(
-                            &left[actual_left_idx],
-                            &right[actual_right_idx],
-                            &child_path,
-                            config,
-                        ));
-                    }
+        // Process hunks to generate DiffOps
+        let mut left_pos: usize = 0;
+        let mut right_pos: usize = 0;
+
+        for (before_range, after_range) in hunks {
+            let before_start = before_range.start as usize;
+            let before_end = before_range.end as usize;
+            let after_start = after_range.start as usize;
+            let after_end = after_range.end as usize;
+
+            // Process equal elements before this hunk
+            while left_pos < before_start && right_pos < after_start {
+                let actual_left_idx = prefix_len + left_pos;
+                let actual_right_idx = prefix_len + right_pos;
+                let child_path = path.append_index(actual_right_idx);
+                ops.extend(diff_values(
+                    &left[actual_left_idx],
+                    &right[actual_right_idx],
+                    &child_path,
+                    config,
+                ));
+                left_pos += 1;
+                right_pos += 1;
+            }
+
+            // Process the hunk itself
+            let old_len = before_end - before_start;
+            let new_len = after_end - after_start;
+
+            if old_len == 0 {
+                // Pure insertion
+                for i in 0..new_len {
+                    let actual_idx = prefix_len + after_start + i;
+                    ops.push(DiffOp::Added {
+                        path: path.append_index(actual_idx),
+                        value: right[actual_idx].clone(),
+                    });
                 }
-                similar::DiffOp::Delete {
-                    old_index, old_len, ..
-                } => {
-                    for i in 0..old_len {
-                        let actual_idx = prefix_len + old_index + i;
-                        ops.push(DiffOp::Removed {
-                            path: path.append_index(actual_idx),
-                            value: left[actual_idx].clone(),
-                        });
-                    }
+            } else if new_len == 0 {
+                // Pure deletion
+                for i in 0..old_len {
+                    let actual_idx = prefix_len + before_start + i;
+                    ops.push(DiffOp::Removed {
+                        path: path.append_index(actual_idx),
+                        value: left[actual_idx].clone(),
+                    });
                 }
-                similar::DiffOp::Insert {
-                    new_index, new_len, ..
-                } => {
-                    for i in 0..new_len {
-                        let actual_idx = prefix_len + new_index + i;
-                        ops.push(DiffOp::Added {
-                            path: path.append_index(actual_idx),
-                            value: right[actual_idx].clone(),
-                        });
-                    }
+            } else {
+                // Replacement: pair up as modifications, then handle excess
+                let min_len = old_len.min(new_len);
+                for i in 0..min_len {
+                    let actual_left_idx = prefix_len + before_start + i;
+                    let actual_right_idx = prefix_len + after_start + i;
+                    ops.push(DiffOp::Modified {
+                        path: path.append_index(actual_right_idx),
+                        old_value: left[actual_left_idx].clone(),
+                        new_value: right[actual_right_idx].clone(),
+                    });
                 }
-                similar::DiffOp::Replace {
-                    old_index,
-                    old_len,
-                    new_index,
-                    new_len,
-                } => {
-                    let min_len = old_len.min(new_len);
-                    for i in 0..min_len {
-                        let actual_left_idx = prefix_len + old_index + i;
-                        let actual_right_idx = prefix_len + new_index + i;
-                        ops.push(DiffOp::Modified {
-                            path: path.append_index(actual_right_idx),
-                            old_value: left[actual_left_idx].clone(),
-                            new_value: right[actual_right_idx].clone(),
-                        });
-                    }
-                    for i in min_len..old_len {
-                        let actual_idx = prefix_len + old_index + i;
-                        ops.push(DiffOp::Removed {
-                            path: path.append_index(actual_idx),
-                            value: left[actual_idx].clone(),
-                        });
-                    }
-                    for i in min_len..new_len {
-                        let actual_idx = prefix_len + new_index + i;
-                        ops.push(DiffOp::Added {
-                            path: path.append_index(actual_idx),
-                            value: right[actual_idx].clone(),
-                        });
-                    }
+                // Excess deletions
+                for i in min_len..old_len {
+                    let actual_idx = prefix_len + before_start + i;
+                    ops.push(DiffOp::Removed {
+                        path: path.append_index(actual_idx),
+                        value: left[actual_idx].clone(),
+                    });
+                }
+                // Excess insertions
+                for i in min_len..new_len {
+                    let actual_idx = prefix_len + after_start + i;
+                    ops.push(DiffOp::Added {
+                        path: path.append_index(actual_idx),
+                        value: right[actual_idx].clone(),
+                    });
                 }
             }
+
+            left_pos = before_end;
+            right_pos = after_end;
+        }
+
+        // Process remaining equal elements after all hunks
+        while left_pos < left_middle.len() && right_pos < right_middle.len() {
+            let actual_left_idx = prefix_len + left_pos;
+            let actual_right_idx = prefix_len + right_pos;
+            let child_path = path.append_index(actual_right_idx);
+            ops.extend(diff_values(
+                &left[actual_left_idx],
+                &right[actual_right_idx],
+                &child_path,
+                config,
+            ));
+            left_pos += 1;
+            right_pos += 1;
         }
     }
 
@@ -503,43 +533,8 @@ fn is_first_occurrence_in_count_map(
     }
 }
 
-/// Wrapper for Value to implement Hash and Eq for similar crate
-/// Note: Kept for potential external use, but ordered mode now uses PrehashedWrapper
-#[allow(dead_code)]
-#[derive(Clone)]
-pub struct ValueWrapper<'a>(pub &'a Value);
-
-impl<'a> PartialEq for ValueWrapper<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        values_equal(self.0, other.0)
-    }
-}
-
-impl<'a> Eq for ValueWrapper<'a> {}
-
-impl<'a> Hash for ValueWrapper<'a> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        hash_value(self.0, state);
-    }
-}
-
-impl<'a> PartialOrd for ValueWrapper<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<'a> Ord for ValueWrapper<'a> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Use the hash as a proxy for ordering
-        use std::collections::hash_map::DefaultHasher;
-        let mut hasher1 = DefaultHasher::new();
-        let mut hasher2 = DefaultHasher::new();
-        self.hash(&mut hasher1);
-        other.hash(&mut hasher2);
-        hasher1.finish().cmp(&hasher2.finish())
-    }
-}
+// Note: ValueWrapper and PrehashedWrapper removed as ordered mode now uses
+// hash-based comparison with imara-diff histogram algorithm (Phase 5)
 
 fn hash_value<H: Hasher>(value: &Value, state: &mut H) {
     if value.is_null() {
@@ -577,59 +572,6 @@ fn hash_value<H: Hasher>(value: &Value, state: &mut H) {
     }
 }
 
-// ============================================================================
-// Phase 3: PrehashedWrapper for hash acceleration
-// ============================================================================
-
-/// Wrapper that stores a pre-computed hash with the value
-/// This avoids repeated hash computation during Myers diff comparisons
-#[derive(Clone)]
-struct PrehashedWrapper<'a> {
-    value: &'a Value,
-    hash: u64,
-}
-
-impl<'a> PrehashedWrapper<'a> {
-    fn new(value: &'a Value) -> Self {
-        PrehashedWrapper {
-            value,
-            hash: compute_value_hash(value),
-        }
-    }
-}
-
-impl<'a> PartialEq for PrehashedWrapper<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        // Fast path: if hashes differ, values definitely differ
-        if self.hash != other.hash {
-            return false;
-        }
-        // Hashes match, need to verify with deep comparison (handles collisions)
-        values_equal(self.value, other.value)
-    }
-}
-
-impl<'a> Eq for PrehashedWrapper<'a> {}
-
-impl<'a> Hash for PrehashedWrapper<'a> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // Just use the pre-computed hash
-        self.hash.hash(state);
-    }
-}
-
-impl<'a> PartialOrd for PrehashedWrapper<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<'a> Ord for PrehashedWrapper<'a> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Use the pre-computed hash for ordering
-        self.hash.cmp(&other.hash)
-    }
-}
 
 // ============================================================================
 // Helper functions for prefix/suffix matching (Phase 2)

@@ -187,30 +187,30 @@ Benchmark results on a typical development machine (run `cargo bench` to reprodu
 | 100 keys | 41 µs | 50 µs | 59 µs | 51 µs |
 | 1000 keys | 3.7 ms | 2.2 ms | 2.3 ms | 500 µs |
 
-### Ordered Array Comparison
+### Array Comparison
 
-Ordered mode uses the Myers diff algorithm with prefix/suffix matching and hash acceleration.
+All modes compared with 50% overlap/difference for fair comparison:
+
+| Size | Ordered (50% diff) | Set Mode | Multiset Mode |
+|------|-------------------|----------|---------------|
+| 10 elements | 2.7 µs | 28 µs | 49 µs |
+| 100 elements | 28 µs | 113 µs | 146 µs |
+| 500 elements | 172 µs | 578 µs | 740 µs |
+| 1000 elements | 414 µs | 1.1 ms | 1.5 ms |
+
+**Ordered mode by scenario:**
 
 | Size | Identical | 5% Diff (end) | 10% Diff (spread) |
 |------|-----------|---------------|-------------------|
-| 10 elements | 121 ns | 3.3 µs | 3.0 µs |
-| 100 elements | 1.0 µs | 25 µs | 84 µs |
-| 500 elements | 4.9 µs | 121 µs | 595 µs |
-| 1000 elements | 9.5 µs | 256 µs | 1.4 ms |
+| 10 elements | 133 ns | 2.7 µs | 2.7 µs |
+| 100 elements | 1.1 µs | 22 µs | 28 µs |
+| 500 elements | 5.3 µs | 114 µs | 172 µs |
+| 1000 elements | 10.8 µs | 211 µs | 414 µs |
 
 **Optimization highlights:**
-- Identical arrays: 375x faster (9.5 µs vs 3.6 ms baseline)
-- High-similarity (5% diff): 14x faster (256 µs vs 3.6 ms baseline)
-- 10% diff: 2.6x faster (1.4 ms vs 3.6 ms baseline)
-
-### Set/Multiset Array Comparison
-
-| Size | Set Mode (50% overlap) | Multiset Mode (50% overlap) |
-|------|------------------------|----------------------------|
-| 10 elements | 29 µs | 51 µs |
-| 100 elements | 124 µs | 160 µs |
-| 500 elements | 623 µs | 798 µs |
-| 1000 elements | 1.2 ms | 1.7 ms |
+- Identical arrays: 330x faster (10.8 µs vs 3.6 ms baseline)
+- High-similarity (5% diff): 17x faster (211 µs vs 3.6 ms baseline)
+- 10% diff spread: 8.7x faster (414 µs vs 3.6 ms baseline)
 
 ### Nested Structures
 
@@ -221,9 +221,10 @@ Ordered mode uses the Myers diff algorithm with prefix/suffix matching and hash 
 | 6 levels | 759 µs |
 
 **Notes:**
-- Ordered array comparison uses the Myers diff algorithm with prefix/suffix optimization
-- Identical arrays short-circuit before running Myers, making them extremely fast
+- Ordered array comparison uses imara-diff's histogram algorithm with prefix/suffix optimization
+- Identical arrays short-circuit before running diff, making them extremely fast
 - High-similarity arrays benefit from prefix/suffix matching (reduces problem size)
+- Spread differences benefit from histogram algorithm (3x faster than Myers)
 - Set mode has O(n) complexity using hash-based lookup
 - Multiset mode uses hash-based counting for efficient duplicate tracking
 - Object comparison is O(n) for key iteration plus recursive comparison of values
