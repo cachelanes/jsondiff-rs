@@ -40,6 +40,8 @@ predicates = "3.1"
 tempfile = "3.14"
 proptest = "1.5"
 insta = { version = "1.41", features = ["json"] }
+# codspeed-criterion-compat is compatible with and passes through to criterion for `cargo bench`
+# criterion's features are also supported, see: https://github.com/CodSpeedHQ/codspeed-rust/blob/main/crates/criterion_compat/Cargo.toml
 criterion = { version = "4.2.1", package = "codspeed-criterion-compat", features = ["html_reports"] }
 
 [profile.release]
