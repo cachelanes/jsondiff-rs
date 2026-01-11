@@ -1,5 +1,7 @@
 # jsondiff
 
+[![CodSpeed](https://img.shields.io/badge/CodSpeed-performance-blue?utm_source=badge)](https://codspeed.io/aksh1618/jsondiff-rs?utm_source=badge)
+
 A lightning-fast JSON diff tool with beautiful, colorful output.
 
 ## Features
