@@ -35,14 +35,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup rust toolchain, cache and cargo-codspeed binary
-        uses: moonrepo/setup-rust@v1
+      # Using dtolnay/rust-toolchain + Swatinem/rust-cache instead of moonrepo/setup-rust
+      # (CodSpeed's default) because these are the de-facto standard Rust actions and
+      # Swatinem/rust-cache properly includes CPU arch in cache keys for ARM64 runners.
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          channel: stable
-          cache-target: release
-          bins: cargo-codspeed
-          # Include runner.arch in cache key since codspeed-macro uses ARM64
-          cache-base: ${{ runner.arch }}
+          cache-targets: "false"
+          cache-on-failure: "true"
+
+      - name: Install cargo-codspeed
+        uses: taiki-e/install-action@cargo-codspeed
 
       - name: Build the benchmark target(s)
         run: cargo codspeed build
