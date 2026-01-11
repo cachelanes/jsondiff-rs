@@ -1,6 +1,8 @@
 name: CodSpeed
 
 on:
+  # TODO: path filters for pull_request evaluate all changes in the PR, not per-commit.
+  # Consider using dorny/paths-filter for per-commit filtering if this becomes noisy.
   push:
     branches:
       - "main"
@@ -10,6 +12,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".cargo/**"
+      - ".github/workflows/codspeed.yml"
   pull_request:
     paths:
       - "src/**"
@@ -17,6 +20,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - ".cargo/**"
+      - ".github/workflows/codspeed.yml"
   workflow_dispatch:
 
 permissions:
