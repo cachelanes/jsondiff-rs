@@ -13,7 +13,8 @@ categories = ["command-line-utilities", "development-tools"]
 clap = { version = "4.5", features = ["derive"] }
 
 # JSON parsing (SIMD-accelerated)
-sonic-rs = "0.5"
+# TODO: upgrade to 0.5+ - will need changes like serde_json for output serialization as sonic-rs 0.5 doesn't preserve key order in `json!()`
+sonic-rs = "0.3"
 
 # Diff algorithm
 similar = "2.7"

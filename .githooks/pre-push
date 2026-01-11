@@ -1,0 +1,12 @@
+#!/bin/bash
+# Pre-push hook: run tests before pushing
+
+echo "Running tests before push..."
+cargo test --quiet
+
+if [ $? -ne 0 ]; then
+    echo "Tests failed. Push aborted."
+    exit 1
+fi
+
+echo "Tests passed."

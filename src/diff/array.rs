@@ -1,7 +1,7 @@
 use super::engine::diff_values;
 use super::object::values_equal;
 use super::types::{DiffConfig, DiffOp, JsonPath};
-use imara_diff::intern::InternedInput;
+use imara_diff::{Algorithm, Diff, InternedInput};
 use sonic_rs::{JsonContainerTrait, JsonValueTrait, Value};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -100,14 +100,8 @@ pub fn diff_arrays_ordered(
         input.update_after(right_hashes.iter().copied());
 
         // Collect hunks from imara-diff
-        let mut hunks: Vec<(std::ops::Range<u32>, std::ops::Range<u32>)> = Vec::new();
-        imara_diff::diff(
-            imara_diff::Algorithm::Histogram,
-            &input,
-            |before: std::ops::Range<u32>, after: std::ops::Range<u32>| {
-                hunks.push((before, after));
-            },
-        );
+        let diff = Diff::compute(Algorithm::Histogram, &input);
+        let hunks: Vec<_> = diff.hunks().map(|h| (h.before, h.after)).collect();
 
         // Process hunks to generate DiffOps
         let mut left_pos: usize = 0;
