@@ -179,67 +179,23 @@ This makes output predictable and easy to correlate with source files.
 
 ## Performance
 
-Benchmark results on a typical development machine (run `cargo bench` to reproduce):
+Performance is continuously tracked via [CodSpeed](https://codspeed.io/aksh1618/jsondiff-rs). Run `cargo bench` locally to reproduce.
 
-### Object Comparison
+### Why It's Fast
 
-| Size | Identical | 10% Different | 50% Different | 100% Different |
-|------|-----------|---------------|---------------|----------------|
-| 10 keys | 0.69 µs | 2.3 µs | 2.9 µs | 4.7 µs |
-| 100 keys | 41 µs | 50 µs | 59 µs | 51 µs |
-| 1000 keys | 3.7 ms | 2.2 ms | 2.3 ms | 500 µs |
-
-### Array Comparison
-
-All modes compared with 50% overlap/difference for fair comparison:
-
-| Size | Ordered (50% diff) | Set Mode | Multiset Mode |
-|------|-------------------|----------|---------------|
-| 10 elements | 2.7 µs | 28 µs | 49 µs |
-| 100 elements | 28 µs | 113 µs | 146 µs |
-| 500 elements | 172 µs | 578 µs | 740 µs |
-| 1000 elements | 414 µs | 1.1 ms | 1.5 ms |
-
-**Ordered mode by scenario:**
-
-| Size | Identical | 5% Diff (end) | 10% Diff (spread) |
-|------|-----------|---------------|-------------------|
-| 10 elements | 133 ns | 2.7 µs | 2.7 µs |
-| 100 elements | 1.1 µs | 22 µs | 28 µs |
-| 500 elements | 5.3 µs | 114 µs | 172 µs |
-| 1000 elements | 10.8 µs | 211 µs | 414 µs |
-
-### Nested Structures
-
-| Depth | Time |
-|-------|------|
-| 2 levels | 4.8 µs |
-| 4 levels | 70 µs |
-| 6 levels | 759 µs |
-
-**Notes:**
-- Ordered array comparison uses imara-diff's histogram algorithm with prefix/suffix optimization
-- Identical arrays short-circuit before running diff, making them extremely fast
-- High-similarity arrays benefit from prefix/suffix matching (reduces problem size)
-- Spread differences benefit from histogram algorithm (3x faster than Myers)
-- Set mode has O(n) complexity using hash-based lookup
-- Multiset mode uses hash-based counting for efficient duplicate tracking
-- Object comparison is O(n) for key iteration plus recursive comparison of values
+- **SIMD-accelerated parsing**: sonic-rs provides 3-6x faster JSON parsing than serde_json
+- **Early termination**: Identical values short-circuit immediately
+- **Prefix/suffix matching**: High-similarity arrays skip unchanged regions
+- **Histogram diff algorithm**: imara-diff's histogram algorithm is ~3x faster than Myers for spread differences
+- **Hash-based set operations**: O(n) complexity for set/multiset modes
+- **Efficient object comparison**: O(n) key iteration with recursive value comparison
 
 ### Running Benchmarks
 
 ```bash
-# Run all benchmarks
-cargo bench
-
-# Run specific benchmark group
-cargo bench -- diff_objects
-cargo bench -- diff_arrays
-cargo bench -- diff_nested
-
-# Memory profiling (use external tools)
-heaptrack ./target/release/jsondiff file1.json file2.json
-valgrind --tool=dhat ./target/release/jsondiff file1.json file2.json
+cargo bench                      # Run all benchmarks
+cargo bench -- diff_objects      # Run specific group
+cargo bench -- real_world        # Real-world fixtures (GeoJSON, package-lock)
 ```
 
 ## Future Features

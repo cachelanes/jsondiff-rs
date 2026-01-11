@@ -28,7 +28,6 @@ This plan outlines the infrastructure needed to track performance consistently a
 
 ### What's Remaining
 - Local noise reduction (Criterion tuning, runner script)
-- Benchmark scenario improvements (real-world samples, scale testing)
 - Memory profiling integration
 
 ---
@@ -180,7 +179,7 @@ Access the dashboard at: https://codspeed.io (after first CI run)
 
 ---
 
-## Part 3: Benchmark Scenario Improvements (Future)
+## Part 3: Benchmark Scenario Improvements ✅ Complete
 
 ### Current Coverage
 | Category | Sizes | Scenarios |
@@ -189,29 +188,24 @@ Access the dashboard at: https://codspeed.io (after first CI run)
 | Arrays (ordered) | 10, 100, 500, 1000 | identical, 10%, 50% end-only |
 | Arrays (set/multiset) | 10, 100, 500, 1000 | 50% overlap, duplicates |
 | Nested | depth 2,4,6 × breadth 3 | identical, modified |
+| Real-world GeoJSON | 6-12MB | identical, 3 cross-source diffs |
+| Real-world package-lock | 680-750KB | identical, ~8%, ~18%, ~42% diffs |
 
-### Gaps to Address
-
-#### 3.1 Real-World JSON Samples
-
-**Selected Fixtures:**
+### Implemented Fixtures
 
 | File | Source | License | Size | Purpose |
 |------|--------|---------|------|---------|
-| `india-osm.geojson` | [datameet/maps](https://github.com/datameet/maps/blob/master/Country/india-osm.geojson) | CC BY 4.0 | 6.3MB | Large numeric arrays (GeoJSON coordinates) |
-| `citm_catalog.json` | [nativejson-benchmark](https://github.com/miloyip/nativejson-benchmark) | MIT | 1.7MB | Deep nesting, many keys, indented |
-| `twitter.json` | [nativejson-benchmark](https://github.com/miloyip/nativejson-benchmark) | MIT | 632KB | Unicode/CJK text, social media structure |
+| `india-osm.geojson` | [datameet/maps](https://github.com/datameet/maps) | ODbL | 6.3MB | GeoJSON coordinates (OpenStreetMap) |
+| `india-composite.geojson` | [datameet/maps](https://github.com/datameet/maps) | CC-0 | 11MB | GeoJSON (composite sources) |
+| `india-soi.geojson` | [datameet/maps](https://github.com/datameet/maps) | CC-by-sa 2.5 | 12MB | GeoJSON (Survey of India) |
+| `vscode-1.94-package-lock.json` | [microsoft/vscode](https://github.com/microsoft/vscode) | MIT | 751KB | npm lockfile baseline |
+| `vscode-1.95-package-lock.json` | [microsoft/vscode](https://github.com/microsoft/vscode) | MIT | 702KB | ~18% diff from 1.94 |
+| `vscode-1.100-package-lock.json` | [microsoft/vscode](https://github.com/microsoft/vscode) | MIT | 708KB | ~8% diff from 1.95 |
+| `vscode-1.108-package-lock.json` | [microsoft/vscode](https://github.com/microsoft/vscode) | MIT | 681KB | ~42% diff from 1.94 |
 
-**Additional from jsondiff libraries (MIT):**
-- [wI2L/jsondiff testdata](https://github.com/wI2L/jsondiff/tree/master/testdata/benchs) - small/medium diff pairs
+### Future Enhancements
 
-**Diff Variants to Generate:**
-- Identical copies (baseline)
-- 10% modified (typical edit)
-- 50% modified (major refactor)
-- Reordered arrays/keys (tests ordering modes)
-
-#### 3.2 Scale Testing
+#### 3.1 Scale Testing
 - **Large files**: 1MB, 10MB, 100MB JSON
 - **Wide objects**: 10k, 100k keys
 - **Deep nesting**: depth 10, 20, 50
@@ -244,10 +238,10 @@ Compare against other tools:
 2. Create `scripts/bench.sh` or `just bench` runner script
 3. Add 3-5 regression threshold tests (optional safety net)
 
-### Phase 3: Benchmark Scenario Improvements
-1. Add real-world JSON test fixtures
-2. Expand size ranges for scale testing
-3. Add comparative benchmarks against other tools
+### Phase 3: Benchmark Scenario Improvements ✅ Complete
+1. ~~Add real-world JSON test fixtures~~ → India GeoJSON + VSCode package-lock
+2. Expand size ranges for scale testing (future)
+3. Add comparative benchmarks against other tools (future)
 
 ### Phase 4: Advanced (Future)
 1. Memory profiling integration (DHAT, heaptrack)
@@ -256,19 +250,23 @@ Compare against other tools:
 
 ---
 
-## File Structure After Implementation
+## File Structure
 
 ```
 jsondiff-rs/
 ├── .github/workflows/
-│   ├── codspeed.yml           # ✅ CodSpeed benchmark CI workflow
+│   ├── codspeed.yml           # ✅ CodSpeed benchmark CI (walltime + macro runners)
 │   └── claude.yml             # Claude Code integration
 ├── benches/
 │   ├── benchmarks.rs          # Main benchmarks (criterion-compat)
 │   └── fixtures/              # Real-world JSON samples
-│       ├── india-osm.geojson  # 6.3MB GeoJSON (CC BY 4.0 - datameet/maps)
-│       ├── citm_catalog.json  # 1.7MB catalog (MIT - nativejson-benchmark)
-│       ├── twitter.json       # 632KB social (MIT - nativejson-benchmark)
+│       ├── india-osm.geojson          # 6.3MB (datameet/maps - ODbL)
+│       ├── india-composite.geojson    # 11MB (datameet/maps - CC-0)
+│       ├── india-soi.geojson          # 12MB (datameet/maps - CC-by-sa)
+│       ├── vscode-1.94-package-lock.json   # 751KB (microsoft/vscode - MIT)
+│       ├── vscode-1.95-package-lock.json   # 702KB
+│       ├── vscode-1.100-package-lock.json  # 708KB
+│       ├── vscode-1.108-package-lock.json  # 681KB
 │       └── LICENSES.md        # Third-party attribution
 ├── justfile                   # ✅ Task runner (includes bench commands)
 └── target/criterion/          # Generated reports (gitignored)
@@ -278,9 +276,9 @@ jsondiff-rs/
 
 ## Decision Points (Remaining)
 
-1. ~~**CI runner**: Use GitHub-hosted or self-hosted?~~ → GitHub-hosted with CodSpeed walltime mode
+1. ~~**CI runner**: Use GitHub-hosted or self-hosted?~~ → CodSpeed macro runners (ARM64 bare-metal)
 2. ~~**Dashboard hosting**: GitHub Pages, external service?~~ → CodSpeed dashboard
-3. ~~**Real-world samples**: Which domains to prioritize?~~ → GeoJSON, catalog, social media (see §3.1)
+3. ~~**Real-world samples**: Which domains to prioritize?~~ → GeoJSON (geographic), package-lock (config)
 4. **Regression thresholds**: What % degradation should CodSpeed alert on? (configurable in CodSpeed)
 5. **Comparative benchmarks**: Which tools to compare against?
 
