@@ -427,6 +427,52 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
         );
     }
 
+    // VSCode package-lock.json comparisons - graduated diff percentages
+    // Versions chosen to show ~8%, ~18%, ~42% differences
+    // Note: Older VSCode versions used yarn.lock, not package-lock.json
+    if let (Some(v1_94), Some(v1_95), Some(v1_100), Some(v1_108)) = (
+        load_fixture("vscode-1.94-package-lock.json"),
+        load_fixture("vscode-1.95-package-lock.json"),
+        load_fixture("vscode-1.100-package-lock.json"),
+        load_fixture("vscode-1.108-package-lock.json"),
+    ) {
+        // Identical baseline
+        group.bench_with_input(
+            BenchmarkId::new("identical", "vscode_package_lock"),
+            &v1_95,
+            |b, val| {
+                b.iter(|| engine.diff(black_box(val), black_box(val)));
+            },
+        );
+
+        // ~8% diff: 1.95 vs 1.100 (small dependency update)
+        group.bench_with_input(
+            BenchmarkId::new("diff_8pct", "vscode_1.95_vs_1.100"),
+            &(&v1_95, &v1_100),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+            },
+        );
+
+        // ~18% diff: 1.94 vs 1.95 (minor version bump)
+        group.bench_with_input(
+            BenchmarkId::new("diff_18pct", "vscode_1.94_vs_1.95"),
+            &(&v1_94, &v1_95),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+            },
+        );
+
+        // ~42% diff: 1.94 vs 1.108 (major version gap)
+        group.bench_with_input(
+            BenchmarkId::new("diff_42pct", "vscode_1.94_vs_1.108"),
+            &(&v1_94, &v1_108),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+            },
+        );
+    }
+
     group.finish();
 }
 

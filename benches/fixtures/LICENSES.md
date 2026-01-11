@@ -28,6 +28,17 @@ Licenses: ODbL, CC-0, CC-by-sa 2.5 (see source repo for details)
 - **Copyright**: Copyright (c) 2014-2016 Milo Yip
 - **Description**: Twitter API response with CJK (Chinese/Japanese/Korean) text
 
+## vscode-*-package-lock.json
+
+- **Source**: [microsoft/vscode](https://github.com/microsoft/vscode)
+- **License**: MIT
+- **Copyright**: Copyright (c) Microsoft Corporation
+- **Description**: VSCode package-lock.json files from different versions for graduated diff testing
+  - `vscode-1.94-package-lock.json` (751KB) - Baseline (oldest with package-lock.json)
+  - `vscode-1.95-package-lock.json` (702KB) - ~18% diff from 1.94
+  - `vscode-1.100-package-lock.json` (708KB) - ~8% diff from 1.95
+  - `vscode-1.108-package-lock.json` (681KB) - Latest release, ~42% diff from 1.94
+
 ---
 
 ## MIT License (nativejson-benchmark)
