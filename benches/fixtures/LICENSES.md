@@ -14,20 +14,6 @@ Each file is used under its respective license with attribution as required.
 
 Licenses: ODbL, CC-0, CC-by-sa 2.5 (see source repo for details)
 
-## citm_catalog.json
-
-- **Source**: [miloyip/nativejson-benchmark](https://github.com/miloyip/nativejson-benchmark/blob/master/data/citm_catalog.json)
-- **License**: MIT
-- **Copyright**: Copyright (c) 2014-2016 Milo Yip
-- **Description**: Event catalog data used in Java JSON parser benchmarks
-
-## twitter.json
-
-- **Source**: [miloyip/nativejson-benchmark](https://github.com/miloyip/nativejson-benchmark/blob/master/data/twitter.json)
-- **License**: MIT
-- **Copyright**: Copyright (c) 2014-2016 Milo Yip
-- **Description**: Twitter API response with CJK (Chinese/Japanese/Korean) text
-
 ## vscode-*-package-lock.json
 
 - **Source**: [microsoft/vscode](https://github.com/microsoft/vscode)
@@ -38,31 +24,3 @@ Licenses: ODbL, CC-0, CC-by-sa 2.5 (see source repo for details)
   - `vscode-1.95-package-lock.json` (702KB) - ~18% diff from 1.94
   - `vscode-1.100-package-lock.json` (708KB) - ~8% diff from 1.95
   - `vscode-1.108-package-lock.json` (681KB) - Latest release, ~42% diff from 1.94
-
----
-
-## MIT License (nativejson-benchmark)
-
-```
-MIT License
-
-Copyright (c) 2014-2016 Milo Yip
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```

@@ -369,22 +369,7 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
     };
     let engine = DiffEngine::new(config);
 
-    // Single-file fixtures for identical comparison baseline
-    let single_fixtures = [
-        ("citm_catalog", "citm_catalog.json"),
-        ("twitter", "twitter.json"),
-    ];
-
-    for (name, filename) in single_fixtures.iter() {
-        if let Some(value) = load_fixture(filename) {
-            group.bench_with_input(BenchmarkId::new("identical", name), &value, |b, val| {
-                b.iter(|| engine.diff(black_box(val), black_box(val)));
-            });
-        }
-    }
-
-    // Paired fixtures for real diff comparison
-    // Three different GeoJSON sources of India's boundary - real structural differences
+    // India GeoJSON - three different sources of India's boundary with real structural differences
     if let (Some(india_osm), Some(india_composite), Some(india_soi)) = (
         load_fixture("india-osm.geojson"),
         load_fixture("india-composite.geojson"),
