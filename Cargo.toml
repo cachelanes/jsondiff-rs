@@ -13,11 +13,11 @@ categories = ["command-line-utilities", "development-tools"]
 clap = { version = "4.5", features = ["derive"] }
 
 # JSON parsing (SIMD-accelerated)
-sonic-rs = "0.3"
+sonic-rs = "0.5"
 
 # Diff algorithm
-similar = "2.6"
-imara-diff = "0.1"
+similar = "2.7"
+imara-diff = "0.2"
 
 # Terminal colors
 colored = "3.0"
@@ -29,17 +29,17 @@ thiserror = "2.0"
 memmap2 = "0.9"
 
 # Parallel processing
-rayon = "1.10"
+rayon = "1.11"
 
 # Terminal detection
 atty = "0.2"
 
 [dev-dependencies]
-assert_cmd = "2.0"
+assert_cmd = "2.1"
 predicates = "3.1"
-tempfile = "3.14"
-proptest = "1.5"
-insta = { version = "1.41", features = ["json"] }
+tempfile = "3.24"
+proptest = "1.9"
+insta = { version = "1.46", features = ["json"] }
 # codspeed-criterion-compat is compatible with and passes through to criterion for `cargo bench`
 # criterion's features are also supported, see: https://github.com/CodSpeedHQ/codspeed-rust/blob/main/crates/criterion_compat/Cargo.toml
 criterion = { version = "4.2.1", package = "codspeed-criterion-compat", features = ["html_reports"] }
