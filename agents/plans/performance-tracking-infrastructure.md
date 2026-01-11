@@ -14,13 +14,23 @@ This plan outlines the infrastructure needed to track performance consistently a
 - **Manual result archives** in `agents/assets/perf-ordered-array-benchmarks/`
 - **SIMD optimization** via `.cargo/config.toml` (`-C target-cpu=native`)
 - **Release profile** with LTO, single codegen unit, panic=abort
+- ✅ **CodSpeed CI integration** via `.github/workflows/codspeed.yml`
+- ✅ **codspeed-criterion-compat** drop-in replacement for criterion (works with both `cargo bench` and `cargo codspeed`)
 
-### What's Missing
-- No CI/CD benchmark integration
-- No automated regression detection
-- No visual dashboard/trending
-- No noise reduction/sandboxing
-- Benchmark scenarios limited to synthetic data
+### What's Been Implemented
+| Component | Status | Details |
+|-----------|--------|---------|
+| CI benchmark workflow | ✅ Done | `.github/workflows/codspeed.yml` |
+| Visual dashboard | ✅ Done | CodSpeed provides trending & graphs |
+| PR comments | ✅ Done | CodSpeed posts comparison on PRs |
+| Regression detection | ✅ Done | CodSpeed tracks & alerts |
+| Noise reduction in CI | ✅ Done | CodSpeed uses `simulation` mode (instruction counts) |
+
+### What's Remaining
+- Local noise reduction (Criterion tuning, runner script)
+- Code-based regression tests (explicit thresholds in test suite)
+- Benchmark scenario improvements (real-world samples, scale testing)
+- Memory profiling integration
 
 ---
 
@@ -113,33 +123,19 @@ Start with **1.3 (Criterion tuning)** and **1.4 (runner script)** as they requir
 
 ## Part 2: Performance Tracking
 
-### 2.1 Code-Based Regression Detection
+> **Status**: ✅ Largely complete via CodSpeed integration
 
-#### Option A: Criterion Baseline Comparison (Built-in)
-Criterion already compares against the last run and reports regressions:
-```
-Performance has regressed.
-  time: [1.2345 ms 1.2456 ms 1.2567 ms]
-  change: [+15.234% +16.789% +18.234%] (p < 0.05)
-```
+CodSpeed now handles:
+- **CI benchmarking** with instruction-count measurement (no noise)
+- **Visual dashboard** with historical trending
+- **PR comments** showing before/after comparison
+- **Regression alerts** when performance degrades
 
-**Limitation**: Only compares to previous run, not a fixed baseline.
+### 2.1 Code-Based Regression Detection (Optional Enhancement)
 
-#### Option B: `criterion-compare` for CI
-Use saved baselines and fail CI on regression:
+For additional safety net beyond CodSpeed, consider explicit threshold tests:
 
-```yaml
-# In CI workflow
-- name: Run benchmarks
-  run: cargo bench -- --save-baseline pr-${{ github.sha }}
-
-- name: Compare to main
-  run: |
-    cargo bench -- --load-baseline main --save-baseline pr-${{ github.sha }}
-    # Check for regressions > 10%
-```
-
-#### Option C: Custom Regression Test (Recommended)
+#### Option: Custom Regression Test
 Add a test that fails if performance exceeds thresholds:
 
 ```rust
@@ -168,93 +164,20 @@ fn perf_regression_array_1000_identical() {
 
 **Benefits**:
 - Explicit thresholds checked in code
-- Fails CI on regression
-- No external tooling needed
+- Fails CI on regression independently of CodSpeed
+- Catches regressions even if CodSpeed is unavailable
 
 ### 2.2 Visual Tracking & Dashboard
 
-#### Option A: GitHub Pages + Criterion HTML Reports
-Publish Criterion's HTML reports to GitHub Pages:
+> **Status**: ✅ Complete via CodSpeed
 
-```yaml
-# .github/workflows/bench.yml
-- name: Run benchmarks
-  run: cargo bench
+CodSpeed provides:
+- Historical trending graphs
+- Per-benchmark drill-down
+- Comparison between any two commits
+- PR integration with inline comments
 
-- name: Deploy to GitHub Pages
-  uses: peaceiris/actions-gh-pages@v3
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    publish_dir: ./target/criterion
-    destination_dir: bench/${{ github.sha }}
-```
-
-**Result**: Historical reports at `https://<user>.github.io/jsondiff-rs/bench/<sha>/`
-
-#### Option B: Bencher.dev (SaaS)
-Third-party service for benchmark tracking:
-
-```yaml
-- uses: bencherdev/bencher@main
-  with:
-    project: jsondiff-rs
-    token: ${{ secrets.BENCHER_API_TOKEN }}
-    adapter: rust_criterion
-```
-
-**Benefits**: Automatic trending, alerts, PR comments
-**Drawback**: External dependency, possible cost
-
-#### Option C: Custom JSON + Chart.js Dashboard (Recommended)
-1. Export Criterion results to JSON
-2. Aggregate into a history file
-3. Render with a simple HTML + Chart.js page
-
-```bash
-# After cargo bench, extract results
-jq -s '.' target/criterion/*/new/estimates.json > bench-results.json
-```
-
-```html
-<!-- docs/bench/index.html -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<canvas id="perfChart"></canvas>
-<script>
-  fetch('history.json')
-    .then(r => r.json())
-    .then(data => {
-      new Chart(document.getElementById('perfChart'), {
-        type: 'line',
-        data: {
-          labels: data.map(d => d.commit.slice(0,7)),
-          datasets: [{
-            label: 'array_1000_identical (µs)',
-            data: data.map(d => d.benchmarks['array_1000_identical'])
-          }]
-        }
-      });
-    });
-</script>
-```
-
-#### Option D: GitHub Action Bot Comments
-Post benchmark comparison as PR comments:
-
-```yaml
-- uses: benchmark-action/github-action-benchmark@v1
-  with:
-    tool: 'cargo'
-    output-file-path: target/criterion/**/new/estimates.json
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    comment-on-alert: true
-    alert-threshold: '150%'  # Alert if 50% slower
-```
-
-### Recommendation
-Combine:
-1. **Option C (regression tests)** for CI gating
-2. **Option A or C (GitHub Pages dashboard)** for visualization
-3. **Option D (PR comments)** for developer visibility
+Access the dashboard at: https://codspeed.io (after first CI run)
 
 ---
 
@@ -303,28 +226,25 @@ Compare against other tools:
 
 ## Implementation Phases
 
-### Phase 1: Foundation (Immediate)
-1. Tune Criterion configuration for lower noise
-2. Create `scripts/bench.sh` runner script
-3. Add 3-5 regression threshold tests
-4. Set up basic GitHub Actions workflow for benchmarks
+### Phase 1: Foundation ✅ Complete
+1. ~~Set up basic GitHub Actions workflow for benchmarks~~ → CodSpeed workflow
+2. ~~Add PR comment bot for benchmark comparison~~ → CodSpeed handles
+3. ~~Create simple trending dashboard~~ → CodSpeed dashboard
 
-### Phase 2: Visibility (Short-term)
-1. Publish Criterion reports to GitHub Pages
-2. Add PR comment bot for benchmark comparison
-3. Create simple trending dashboard
+### Phase 2: Local Development Experience (Next)
+1. Tune Criterion configuration for lower noise (local runs)
+2. Create `scripts/bench.sh` or `just bench` runner script
+3. Add 3-5 regression threshold tests (optional safety net)
 
-### Phase 3: Comprehensive (Medium-term)
+### Phase 3: Benchmark Scenario Improvements
 1. Add real-world JSON test fixtures
 2. Expand size ranges for scale testing
 3. Add comparative benchmarks against other tools
-4. Consider self-hosted runner with CPU isolation
 
-### Phase 4: Polish (Long-term)
-1. Memory profiling integration
+### Phase 4: Advanced (Future)
+1. Memory profiling integration (DHAT, heaptrack)
 2. Flamegraph generation in CI
 3. Cross-platform benchmarking (Linux, macOS, Windows)
-4. Public benchmark leaderboard
 
 ---
 
@@ -333,38 +253,37 @@ Compare against other tools:
 ```
 jsondiff-rs/
 ├── .github/workflows/
-│   └── bench.yml              # Benchmark CI workflow
+│   ├── codspeed.yml           # ✅ CodSpeed benchmark CI workflow
+│   └── claude.yml             # Claude Code integration
 ├── benches/
-│   ├── benchmarks.rs          # Main benchmarks (tuned)
-│   ├── regression.rs          # Threshold-based regression tests
-│   └── fixtures/              # Real-world JSON samples
+│   ├── benchmarks.rs          # Main benchmarks (criterion-compat)
+│   └── fixtures/              # Real-world JSON samples (future)
 │       ├── package.json
 │       ├── openapi-spec.json
 │       └── geojson-sample.json
-├── scripts/
-│   └── bench.sh               # Sandboxed benchmark runner
-├── docs/
-│   └── bench/
-│       ├── index.html         # Dashboard
-│       └── history.json       # Historical data
+├── justfile                   # ✅ Task runner (includes bench commands)
+├── tests/
+│   └── perf_regression.rs     # Threshold-based regression tests (optional)
 └── target/criterion/          # Generated reports (gitignored)
 ```
 
 ---
 
-## Decision Points for Discussion
+## Decision Points (Remaining)
 
-1. **CI runner**: Use GitHub-hosted or self-hosted for benchmarks?
-2. **Regression thresholds**: What % degradation should fail CI?
-3. **Dashboard hosting**: GitHub Pages, external service, or none?
-4. **Real-world samples**: Which domains to prioritize?
+1. ~~**CI runner**: Use GitHub-hosted or self-hosted?~~ → GitHub-hosted with CodSpeed simulation mode
+2. ~~**Dashboard hosting**: GitHub Pages, external service?~~ → CodSpeed dashboard
+3. **Regression thresholds**: What % degradation should CodSpeed alert on? (configurable in CodSpeed)
+4. **Real-world samples**: Which domains to prioritize for benchmark fixtures?
 5. **Comparative benchmarks**: Which tools to compare against?
 
 ---
 
 ## References
 
+- [CodSpeed Documentation](https://codspeed.io/docs/)
+- [CodSpeed Criterion Integration](https://codspeed.io/docs/benchmarks/rust/criterion)
 - [Criterion.rs User Guide](https://bheisler.github.io/criterion.rs/book/)
-- [Bencher.dev Documentation](https://bencher.dev/docs/)
-- [GitHub Action Benchmark](https://github.com/benchmark-action/github-action-benchmark)
+- [Iai-Callgrind](https://github.com/iai-callgrind/iai-callgrind) - Alternative for self-hosted instruction counting
+- [rustc-perf](https://github.com/rust-lang/rustc-perf) - How Rust compiler tracks performance
 - [Linux CPU Isolation](https://www.kernel.org/doc/html/latest/admin-guide/kernel-parameters.html)
