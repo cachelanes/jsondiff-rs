@@ -193,14 +193,23 @@ Access the dashboard at: https://codspeed.io (after first CI run)
 ### Gaps to Address
 
 #### 3.1 Real-World JSON Samples
-- **Package.json** (npm metadata, moderate nesting)
-- **OpenAPI specs** (deep nesting, many keys)
-- **GeoJSON** (large coordinate arrays)
-- **Log entries** (flat, many records)
 
-Sources:
-- https://github.com/jdorfman/awesome-json-datasets
-- Generate from public APIs
+**Selected Fixtures:**
+
+| File | Source | License | Size | Purpose |
+|------|--------|---------|------|---------|
+| `india-osm.geojson` | [datameet/maps](https://github.com/datameet/maps/blob/master/Country/india-osm.geojson) | CC BY 4.0 | 6.3MB | Large numeric arrays (GeoJSON coordinates) |
+| `citm_catalog.json` | [nativejson-benchmark](https://github.com/miloyip/nativejson-benchmark) | MIT | 1.7MB | Deep nesting, many keys, indented |
+| `twitter.json` | [nativejson-benchmark](https://github.com/miloyip/nativejson-benchmark) | MIT | 632KB | Unicode/CJK text, social media structure |
+
+**Additional from jsondiff libraries (MIT):**
+- [wI2L/jsondiff testdata](https://github.com/wI2L/jsondiff/tree/master/testdata/benchs) - small/medium diff pairs
+
+**Diff Variants to Generate:**
+- Identical copies (baseline)
+- 10% modified (typical edit)
+- 50% modified (major refactor)
+- Reordered arrays/keys (tests ordering modes)
 
 #### 3.2 Scale Testing
 - **Large files**: 1MB, 10MB, 100MB JSON
@@ -256,13 +265,12 @@ jsondiff-rs/
 │   └── claude.yml             # Claude Code integration
 ├── benches/
 │   ├── benchmarks.rs          # Main benchmarks (criterion-compat)
-│   └── fixtures/              # Real-world JSON samples (future)
-│       ├── package.json
-│       ├── openapi-spec.json
-│       └── geojson-sample.json
+│   └── fixtures/              # Real-world JSON samples
+│       ├── india-osm.geojson  # 6.3MB GeoJSON (CC BY 4.0 - datameet/maps)
+│       ├── citm_catalog.json  # 1.7MB catalog (MIT - nativejson-benchmark)
+│       ├── twitter.json       # 632KB social (MIT - nativejson-benchmark)
+│       └── LICENSES.md        # Third-party attribution
 ├── justfile                   # ✅ Task runner (includes bench commands)
-├── tests/
-│   └── perf_regression.rs     # Threshold-based regression tests (optional)
 └── target/criterion/          # Generated reports (gitignored)
 ```
 
@@ -270,10 +278,10 @@ jsondiff-rs/
 
 ## Decision Points (Remaining)
 
-1. ~~**CI runner**: Use GitHub-hosted or self-hosted?~~ → GitHub-hosted with CodSpeed simulation mode
+1. ~~**CI runner**: Use GitHub-hosted or self-hosted?~~ → GitHub-hosted with CodSpeed walltime mode
 2. ~~**Dashboard hosting**: GitHub Pages, external service?~~ → CodSpeed dashboard
-3. **Regression thresholds**: What % degradation should CodSpeed alert on? (configurable in CodSpeed)
-4. **Real-world samples**: Which domains to prioritize for benchmark fixtures?
+3. ~~**Real-world samples**: Which domains to prioritize?~~ → GeoJSON, catalog, social media (see §3.1)
+4. **Regression thresholds**: What % degradation should CodSpeed alert on? (configurable in CodSpeed)
 5. **Comparative benchmarks**: Which tools to compare against?
 
 ---

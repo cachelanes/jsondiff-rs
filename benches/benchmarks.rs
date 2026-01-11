@@ -1,8 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use sonic_rs::Value;
+use std::fs;
 
 use jsondiff::diff::engine::DiffEngine;
 use jsondiff::diff::types::{ArrayCompareMode, DiffConfig};
+
+// Path to benchmark fixtures
+const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/benches/fixtures");
 
 // ============================================================================
 // Data Generators
@@ -333,11 +337,105 @@ fn bench_nested_diff(c: &mut Criterion) {
     group.finish();
 }
 
+// ============================================================================
+// Real-World Fixture Benchmarks
+// ============================================================================
+
+/// Load a fixture file and parse it as JSON
+fn load_fixture(filename: &str) -> Option<Value> {
+    let path = format!("{}/{}", FIXTURES_DIR, filename);
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Warning: Could not load fixture {}: {}", filename, e);
+            return None;
+        }
+    };
+    match sonic_rs::from_str(&content) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            eprintln!("Warning: Could not parse fixture {}: {}", filename, e);
+            None
+        }
+    }
+}
+
+fn bench_real_world_fixtures(c: &mut Criterion) {
+    let mut group = c.benchmark_group("real_world");
+
+    let config = DiffConfig {
+        array_mode: ArrayCompareMode::Ordered,
+        ordered_objects: false,
+    };
+    let engine = DiffEngine::new(config);
+
+    // Single-file fixtures for identical comparison baseline
+    let single_fixtures = [
+        ("citm_catalog", "citm_catalog.json"),
+        ("twitter", "twitter.json"),
+    ];
+
+    for (name, filename) in single_fixtures.iter() {
+        if let Some(value) = load_fixture(filename) {
+            group.bench_with_input(BenchmarkId::new("identical", name), &value, |b, val| {
+                b.iter(|| engine.diff(black_box(val), black_box(val)));
+            });
+        }
+    }
+
+    // Paired fixtures for real diff comparison
+    // Three different GeoJSON sources of India's boundary - real structural differences
+    if let (Some(india_osm), Some(india_composite), Some(india_soi)) = (
+        load_fixture("india-osm.geojson"),
+        load_fixture("india-composite.geojson"),
+        load_fixture("india-soi.geojson"),
+    ) {
+        // Identical baseline (OSM vs OSM)
+        group.bench_with_input(
+            BenchmarkId::new("identical", "india_geojson"),
+            &india_osm,
+            |b, val| {
+                b.iter(|| engine.diff(black_box(val), black_box(val)));
+            },
+        );
+
+        // Real diff: OSM (6.3MB) vs Composite (11MB)
+        group.bench_with_input(
+            BenchmarkId::new("diff", "india_osm_vs_composite"),
+            &(&india_osm, &india_composite),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+            },
+        );
+
+        // Real diff: OSM (6.3MB) vs SOI (12MB)
+        group.bench_with_input(
+            BenchmarkId::new("diff", "india_osm_vs_soi"),
+            &(&india_osm, &india_soi),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+            },
+        );
+
+        // Real diff: Composite (11MB) vs SOI (12MB)
+        group.bench_with_input(
+            BenchmarkId::new("diff", "india_composite_vs_soi"),
+            &(&india_composite, &india_soi),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_diff_objects,
     bench_diff_arrays,
     bench_nested_diff,
+    bench_real_world_fixtures,
 );
 
 criterion_main!(benches);
