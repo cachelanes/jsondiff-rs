@@ -179,7 +179,7 @@ This makes output predictable and easy to correlate with source files.
 
 ## Performance
 
-Performance is continuously tracked via [CodSpeed](https://codspeed.io/aksh1618/jsondiff-rs). Run `cargo bench` locally to reproduce.
+Performance is continuously tracked via [CodSpeed](https://codspeed.io/cachelanes/jsondiff-rs). Run `cargo bench` locally to reproduce.
 
 ### Why It's Fast
 
