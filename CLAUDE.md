@@ -47,3 +47,7 @@ obj.get(&key.to_string())  // not obj.get(key)
 - **Exit codes**: Always 0 on success (not 1 for differences)
 - **Objects**: Unordered by default (use `-o` for ordered)
 - **Arrays**: Ordered by default (use `-s` for set, `-m` for multiset)
+
+## Commit Messages
+
+Commit messages should describe the intention/effect, not summarize the diff. The diff is already visible - explain *why* or *what it achieves*.
