@@ -17,6 +17,7 @@ sonic-rs = "0.3"
 
 # Diff algorithm
 similar = "2.6"
+imara-diff = "0.1"
 
 # Terminal colors
 colored = "3.0"

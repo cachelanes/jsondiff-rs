@@ -1,6 +1,7 @@
 use super::engine::diff_values;
 use super::object::values_equal;
 use super::types::{DiffConfig, DiffOp, JsonPath};
+use imara_diff::intern::InternedInput;
 use sonic_rs::{JsonContainerTrait, JsonValueTrait, Value};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -17,88 +18,200 @@ pub fn diff_arrays_ordered(
     path: &JsonPath,
     config: &DiffConfig,
 ) -> Vec<DiffOp> {
+    // =========================================================================
+    // Phase 1: Early termination paths
+    // =========================================================================
+
+    // Fast path: both arrays empty
+    if left.is_empty() && right.is_empty() {
+        return vec![];
+    }
+
+    // Fast path: left array empty - all elements are additions
+    if left.is_empty() {
+        return right
+            .iter()
+            .enumerate()
+            .map(|(i, val)| DiffOp::Added {
+                path: path.append_index(i),
+                value: val.clone(),
+            })
+            .collect();
+    }
+
+    // Fast path: right array empty - all elements are removals
+    if right.is_empty() {
+        return left
+            .iter()
+            .enumerate()
+            .map(|(i, val)| DiffOp::Removed {
+                path: path.append_index(i),
+                value: val.clone(),
+            })
+            .collect();
+    }
+
+    // =========================================================================
+    // Phase 2: Prefix/suffix matching - reduce problem size
+    // =========================================================================
+
+    // Find common prefix (identical leading elements)
+    let prefix_len = find_common_prefix(left, right);
+
+    // Find common suffix (identical trailing elements, not overlapping prefix)
+    let suffix_len = find_common_suffix(left, right, prefix_len);
+
+    // If prefix + suffix covers everything, arrays are identical
+    if prefix_len + suffix_len >= left.len() && prefix_len + suffix_len >= right.len() {
+        // All elements match - just check for deep differences in prefix region
+        let mut ops = Vec::new();
+        for i in 0..left.len() {
+            let child_path = path.append_index(i);
+            ops.extend(diff_values(&left[i], &right[i], &child_path, config));
+        }
+        return ops;
+    }
+
+    // Get the middle portion that needs diff
+    let left_middle_end = left.len() - suffix_len;
+    let right_middle_end = right.len() - suffix_len;
+    let left_middle = &left[prefix_len..left_middle_end];
+    let right_middle = &right[prefix_len..right_middle_end];
+
     let mut ops = Vec::new();
 
-    // Create wrappers for comparison
-    let left_wrapped: Vec<ValueWrapper> = left.iter().map(ValueWrapper).collect();
-    let right_wrapped: Vec<ValueWrapper> = right.iter().map(ValueWrapper).collect();
+    // Process prefix: check for deep differences
+    for i in 0..prefix_len {
+        let child_path = path.append_index(i);
+        ops.extend(diff_values(&left[i], &right[i], &child_path, config));
+    }
 
-    // Use similar crate for efficient Myers diff
-    let changes = similar::capture_diff_slices(
-        similar::Algorithm::Myers,
-        &left_wrapped,
-        &right_wrapped,
-    );
+    // Process the middle portion with diff algorithm
+    // Phase 3: Use pre-computed hashes for fast comparison
+    // Phase 5: Use imara-diff histogram algorithm (faster for spread diffs)
+    if !left_middle.is_empty() || !right_middle.is_empty() {
+        // Pre-compute hashes for all elements
+        let left_hashes: Vec<u64> = left_middle.iter().map(compute_value_hash).collect();
+        let right_hashes: Vec<u64> = right_middle.iter().map(compute_value_hash).collect();
 
-    for change in changes {
-        match change {
-            similar::DiffOp::Equal {
-                old_index,
-                new_index,
-                len,
-            } => {
-                // Values are equal at top level, but check for deep differences
-                for i in 0..len {
-                    let child_path = path.append_index(new_index + i);
-                    ops.extend(diff_values(
-                        &left[old_index + i],
-                        &right[new_index + i],
-                        &child_path,
-                        config,
-                    ));
-                }
+        // Use imara-diff with histogram algorithm on hashes
+        let mut input: InternedInput<u64> = InternedInput::default();
+        input.update_before(left_hashes.iter().copied());
+        input.update_after(right_hashes.iter().copied());
+
+        // Collect hunks from imara-diff
+        let mut hunks: Vec<(std::ops::Range<u32>, std::ops::Range<u32>)> = Vec::new();
+        imara_diff::diff(
+            imara_diff::Algorithm::Histogram,
+            &input,
+            |before: std::ops::Range<u32>, after: std::ops::Range<u32>| {
+                hunks.push((before, after));
+            },
+        );
+
+        // Process hunks to generate DiffOps
+        let mut left_pos: usize = 0;
+        let mut right_pos: usize = 0;
+
+        for (before_range, after_range) in hunks {
+            let before_start = before_range.start as usize;
+            let before_end = before_range.end as usize;
+            let after_start = after_range.start as usize;
+            let after_end = after_range.end as usize;
+
+            // Process equal elements before this hunk
+            while left_pos < before_start && right_pos < after_start {
+                let actual_left_idx = prefix_len + left_pos;
+                let actual_right_idx = prefix_len + right_pos;
+                let child_path = path.append_index(actual_right_idx);
+                ops.extend(diff_values(
+                    &left[actual_left_idx],
+                    &right[actual_right_idx],
+                    &child_path,
+                    config,
+                ));
+                left_pos += 1;
+                right_pos += 1;
             }
-            similar::DiffOp::Delete {
-                old_index, old_len, ..
-            } => {
-                for i in 0..old_len {
-                    ops.push(DiffOp::Removed {
-                        path: path.append_index(old_index + i),
-                        value: left[old_index + i].clone(),
-                    });
-                }
-            }
-            similar::DiffOp::Insert {
-                new_index, new_len, ..
-            } => {
+
+            // Process the hunk itself
+            let old_len = before_end - before_start;
+            let new_len = after_end - after_start;
+
+            if old_len == 0 {
+                // Pure insertion
                 for i in 0..new_len {
+                    let actual_idx = prefix_len + after_start + i;
                     ops.push(DiffOp::Added {
-                        path: path.append_index(new_index + i),
-                        value: right[new_index + i].clone(),
+                        path: path.append_index(actual_idx),
+                        value: right[actual_idx].clone(),
                     });
                 }
-            }
-            similar::DiffOp::Replace {
-                old_index,
-                old_len,
-                new_index,
-                new_len,
-            } => {
-                // Handle replacements as paired modifications where possible
+            } else if new_len == 0 {
+                // Pure deletion
+                for i in 0..old_len {
+                    let actual_idx = prefix_len + before_start + i;
+                    ops.push(DiffOp::Removed {
+                        path: path.append_index(actual_idx),
+                        value: left[actual_idx].clone(),
+                    });
+                }
+            } else {
+                // Replacement: pair up as modifications, then handle excess
                 let min_len = old_len.min(new_len);
                 for i in 0..min_len {
+                    let actual_left_idx = prefix_len + before_start + i;
+                    let actual_right_idx = prefix_len + after_start + i;
                     ops.push(DiffOp::Modified {
-                        path: path.append_index(new_index + i),
-                        old_value: left[old_index + i].clone(),
-                        new_value: right[new_index + i].clone(),
+                        path: path.append_index(actual_right_idx),
+                        old_value: left[actual_left_idx].clone(),
+                        new_value: right[actual_right_idx].clone(),
                     });
                 }
-                // Handle excess deletions
+                // Excess deletions
                 for i in min_len..old_len {
+                    let actual_idx = prefix_len + before_start + i;
                     ops.push(DiffOp::Removed {
-                        path: path.append_index(old_index + i),
-                        value: left[old_index + i].clone(),
+                        path: path.append_index(actual_idx),
+                        value: left[actual_idx].clone(),
                     });
                 }
-                // Handle excess insertions
+                // Excess insertions
                 for i in min_len..new_len {
+                    let actual_idx = prefix_len + after_start + i;
                     ops.push(DiffOp::Added {
-                        path: path.append_index(new_index + i),
-                        value: right[new_index + i].clone(),
+                        path: path.append_index(actual_idx),
+                        value: right[actual_idx].clone(),
                     });
                 }
             }
+
+            left_pos = before_end;
+            right_pos = after_end;
         }
+
+        // Process remaining equal elements after all hunks
+        while left_pos < left_middle.len() && right_pos < right_middle.len() {
+            let actual_left_idx = prefix_len + left_pos;
+            let actual_right_idx = prefix_len + right_pos;
+            let child_path = path.append_index(actual_right_idx);
+            ops.extend(diff_values(
+                &left[actual_left_idx],
+                &right[actual_right_idx],
+                &child_path,
+                config,
+            ));
+            left_pos += 1;
+            right_pos += 1;
+        }
+    }
+
+    // Process suffix: check for deep differences
+    for i in 0..suffix_len {
+        let left_idx = left.len() - suffix_len + i;
+        let right_idx = right.len() - suffix_len + i;
+        let child_path = path.append_index(right_idx);
+        ops.extend(diff_values(&left[left_idx], &right[right_idx], &child_path, config));
     }
 
     ops
@@ -420,41 +533,8 @@ fn is_first_occurrence_in_count_map(
     }
 }
 
-/// Wrapper for Value to implement Hash and Eq for similar crate
-#[derive(Clone)]
-pub struct ValueWrapper<'a>(pub &'a Value);
-
-impl<'a> PartialEq for ValueWrapper<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        values_equal(self.0, other.0)
-    }
-}
-
-impl<'a> Eq for ValueWrapper<'a> {}
-
-impl<'a> Hash for ValueWrapper<'a> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        hash_value(self.0, state);
-    }
-}
-
-impl<'a> PartialOrd for ValueWrapper<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<'a> Ord for ValueWrapper<'a> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Use the hash as a proxy for ordering
-        use std::collections::hash_map::DefaultHasher;
-        let mut hasher1 = DefaultHasher::new();
-        let mut hasher2 = DefaultHasher::new();
-        self.hash(&mut hasher1);
-        other.hash(&mut hasher2);
-        hasher1.finish().cmp(&hasher2.finish())
-    }
-}
+// Note: ValueWrapper and PrehashedWrapper removed as ordered mode now uses
+// hash-based comparison with imara-diff histogram algorithm (Phase 5)
 
 fn hash_value<H: Hasher>(value: &Value, state: &mut H) {
     if value.is_null() {
@@ -490,4 +570,38 @@ fn hash_value<H: Hasher>(value: &Value, state: &mut H) {
             }
         }
     }
+}
+
+
+// ============================================================================
+// Helper functions for prefix/suffix matching (Phase 2)
+// (Phase 1 hash-based early termination is now handled by prefix/suffix)
+// ============================================================================
+
+/// Find the length of the common prefix (identical leading elements)
+fn find_common_prefix(left: &[Value], right: &[Value]) -> usize {
+    left.iter()
+        .zip(right.iter())
+        .take_while(|(l, r)| values_equal(l, r))
+        .count()
+}
+
+/// Find the length of the common suffix (identical trailing elements)
+/// The suffix must not overlap with the prefix
+fn find_common_suffix(left: &[Value], right: &[Value], prefix_len: usize) -> usize {
+    let left_remaining = left.len().saturating_sub(prefix_len);
+    let right_remaining = right.len().saturating_sub(prefix_len);
+    let max_suffix = left_remaining.min(right_remaining);
+
+    let mut suffix_len = 0;
+    for i in 0..max_suffix {
+        let left_idx = left.len() - 1 - i;
+        let right_idx = right.len() - 1 - i;
+        if values_equal(&left[left_idx], &right[right_idx]) {
+            suffix_len += 1;
+        } else {
+            break;
+        }
+    }
+    suffix_len
 }

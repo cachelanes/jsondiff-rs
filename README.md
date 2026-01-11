@@ -183,33 +183,45 @@ Benchmark results on a typical development machine (run `cargo bench` to reprodu
 
 | Size | Identical | 10% Different | 50% Different | 100% Different |
 |------|-----------|---------------|---------------|----------------|
-| 10 keys | 0.80 µs | 1.8 µs | 2.2 µs | 3.5 µs |
-| 100 keys | 49 µs | 41 µs | 51 µs | 35 µs |
-| 1000 keys | 3.9 ms | 2.3 ms | 2.3 ms | 360 µs |
+| 10 keys | 0.69 µs | 2.3 µs | 2.9 µs | 4.7 µs |
+| 100 keys | 41 µs | 50 µs | 59 µs | 51 µs |
+| 1000 keys | 3.7 ms | 2.2 ms | 2.3 ms | 500 µs |
 
 ### Array Comparison
 
-| Size | Ordered (Myers) | Set Mode | Multiset Mode |
-|------|-----------------|----------|---------------|
-| 10 elements | 2.7 µs | 25 µs | 45 µs |
-| 100 elements | 93 µs | 76 µs | 110 µs |
-| 500 elements | 1.0 ms | 421 µs | 520 µs |
-| 1000 elements | 3.0 ms | 806 µs | 1.1 ms |
+All modes compared with 50% overlap/difference for fair comparison:
 
-*Set/Multiset benchmarks use 50% overlap with unique values.*
+| Size | Ordered (50% diff) | Set Mode | Multiset Mode |
+|------|-------------------|----------|---------------|
+| 10 elements | 2.7 µs | 28 µs | 49 µs |
+| 100 elements | 28 µs | 113 µs | 146 µs |
+| 500 elements | 172 µs | 578 µs | 740 µs |
+| 1000 elements | 414 µs | 1.1 ms | 1.5 ms |
+
+**Ordered mode by scenario:**
+
+| Size | Identical | 5% Diff (end) | 10% Diff (spread) |
+|------|-----------|---------------|-------------------|
+| 10 elements | 133 ns | 2.7 µs | 2.7 µs |
+| 100 elements | 1.1 µs | 22 µs | 28 µs |
+| 500 elements | 5.3 µs | 114 µs | 172 µs |
+| 1000 elements | 10.8 µs | 211 µs | 414 µs |
 
 ### Nested Structures
 
 | Depth | Time |
 |-------|------|
-| 2 levels | 2.9 µs |
-| 4 levels | 51 µs |
-| 6 levels | 591 µs |
+| 2 levels | 4.8 µs |
+| 4 levels | 70 µs |
+| 6 levels | 759 µs |
 
 **Notes:**
-- Ordered array comparison uses the Myers diff algorithm, which is O(n*d) where d is the edit distance
-- Set mode has O(n²) complexity for deep equality checks on each element pair
-- Multiset mode uses hash-based counting, making it faster than set mode for large arrays
+- Ordered array comparison uses imara-diff's histogram algorithm with prefix/suffix optimization
+- Identical arrays short-circuit before running diff, making them extremely fast
+- High-similarity arrays benefit from prefix/suffix matching (reduces problem size)
+- Spread differences benefit from histogram algorithm (3x faster than Myers)
+- Set mode has O(n) complexity using hash-based lookup
+- Multiset mode uses hash-based counting for efficient duplicate tracking
 - Object comparison is O(n) for key iteration plus recursive comparison of values
 
 ### Running Benchmarks
