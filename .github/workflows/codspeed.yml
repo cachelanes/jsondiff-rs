@@ -30,7 +30,8 @@ permissions:
 jobs:
   codspeed:
     name: Run benchmarks
-    runs-on: ubuntu-latest
+    # Use CodSpeed's bare-metal macro runners for walltime mode (ARM64 architecture)
+    runs-on: codspeed-macro
     steps:
       - uses: actions/checkout@v4
 
@@ -40,6 +41,8 @@ jobs:
           channel: stable
           cache-target: release
           bins: cargo-codspeed
+          # Include runner.arch in cache key since codspeed-macro uses ARM64
+          cache-base: ${{ runner.arch }}
 
       - name: Build the benchmark target(s)
         run: cargo codspeed build
@@ -47,5 +50,9 @@ jobs:
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v4
         with:
-          mode: simulation
+          # Wall clock mode uses bare-metal macro runners for real-world timing (captures SIMD benefits)
+          # Free tier: 600 min/month. If quota becomes tight, consider hybrid approach:
+          # - PRs: mode: simulation (free, instruction counts)
+          # - main: mode: walltime (authoritative, real timing)
+          mode: walltime
           run: cargo codspeed run

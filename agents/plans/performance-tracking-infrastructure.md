@@ -24,11 +24,10 @@ This plan outlines the infrastructure needed to track performance consistently a
 | Visual dashboard | ✅ Done | CodSpeed provides trending & graphs |
 | PR comments | ✅ Done | CodSpeed posts comparison on PRs |
 | Regression detection | ✅ Done | CodSpeed tracks & alerts |
-| Noise reduction in CI | ✅ Done | CodSpeed uses `simulation` mode (instruction counts) |
+| Real-world timing | ✅ Done | CodSpeed `walltime` mode (bare-metal macro runners, captures SIMD benefits) |
 
 ### What's Remaining
 - Local noise reduction (Criterion tuning, runner script)
-- Code-based regression tests (explicit thresholds in test suite)
 - Benchmark scenario improvements (real-world samples, scale testing)
 - Memory profiling integration
 
