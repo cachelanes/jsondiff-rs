@@ -1,5 +1,6 @@
 use super::engine::diff_values;
 use super::types::{DiffConfig, DiffOp, JsonPath};
+use crate::error::JsonDiffError;
 use sonic_rs::{JsonContainerTrait, JsonValueTrait, Object, Value};
 use std::collections::HashSet;
 
@@ -17,7 +18,7 @@ pub fn diff_objects(
     right: &Object,
     path: &JsonPath,
     config: &DiffConfig,
-) -> Vec<DiffOp> {
+) -> Result<Vec<DiffOp>, JsonDiffError> {
     let mut ops = Vec::new();
 
     // For small objects, linear search is faster than HashSet construction + lookup
@@ -29,20 +30,20 @@ pub fn diff_objects(
         let right_keys: HashSet<&str> = right.iter().map(|(k, _)| k).collect();
 
         if config.ordered_objects {
-            diff_objects_ordered_hashset(left, right, path, config, &mut ops, &left_keys, &right_keys);
+            diff_objects_ordered_hashset(left, right, path, config, &mut ops, &left_keys, &right_keys)?;
         } else {
-            diff_objects_unordered_hashset(left, right, path, config, &mut ops, &left_keys, &right_keys);
+            diff_objects_unordered_hashset(left, right, path, config, &mut ops, &left_keys, &right_keys)?;
         }
     } else {
         // Linear search for small objects
         if config.ordered_objects {
-            diff_objects_ordered_linear(left, right, path, config, &mut ops);
+            diff_objects_ordered_linear(left, right, path, config, &mut ops)?;
         } else {
-            diff_objects_unordered_linear(left, right, path, config, &mut ops);
+            diff_objects_unordered_linear(left, right, path, config, &mut ops)?;
         }
     }
 
-    ops
+    Ok(ops)
 }
 
 /// Unordered comparison for small objects using linear search
@@ -52,13 +53,13 @@ fn diff_objects_unordered_linear(
     path: &JsonPath,
     config: &DiffConfig,
     ops: &mut Vec<DiffOp>,
-) {
+) -> Result<(), JsonDiffError> {
     // Process keys in left object order: removed keys and common keys
     for (key, left_val) in left.iter() {
         let child_path = path.append_key(key);
         if let Some(right_val) = right.get(&key.to_string()) {
             // Common key - recurse to compare values
-            ops.extend(diff_values(left_val, right_val, &child_path, config));
+            ops.extend(diff_values(left_val, right_val, &child_path, config)?);
         } else {
             // Key only in left - removed
             ops.push(DiffOp::Removed {
@@ -78,6 +79,8 @@ fn diff_objects_unordered_linear(
             });
         }
     }
+
+    Ok(())
 }
 
 /// Unordered comparison for larger objects using HashSet for O(1) lookups
@@ -89,14 +92,14 @@ fn diff_objects_unordered_hashset(
     ops: &mut Vec<DiffOp>,
     left_keys: &HashSet<&str>,
     right_keys: &HashSet<&str>,
-) {
+) -> Result<(), JsonDiffError> {
     // Process keys in left object order: removed keys and common keys
     for (key, left_val) in left.iter() {
         let child_path = path.append_key(key);
         if right_keys.contains(key) {
             // Common key - recurse to compare values
             let right_val = right.get(&key.to_string()).unwrap();
-            ops.extend(diff_values(left_val, right_val, &child_path, config));
+            ops.extend(diff_values(left_val, right_val, &child_path, config)?);
         } else {
             // Key only in left - removed
             ops.push(DiffOp::Removed {
@@ -116,6 +119,8 @@ fn diff_objects_unordered_hashset(
             });
         }
     }
+
+    Ok(())
 }
 
 /// Ordered comparison for small objects using linear search
@@ -125,7 +130,7 @@ fn diff_objects_ordered_linear(
     path: &JsonPath,
     config: &DiffConfig,
     ops: &mut Vec<DiffOp>,
-) {
+) -> Result<(), JsonDiffError> {
     let left_order: Vec<&str> = left.iter().map(|(k, _)| k).collect();
     let right_order: Vec<&str> = right.iter().map(|(k, _)| k).collect();
 
@@ -148,7 +153,7 @@ fn diff_objects_ordered_linear(
                 }
             } else {
                 // Same position - recurse
-                ops.extend(diff_values(left_val, right_val, &child_path, config));
+                ops.extend(diff_values(left_val, right_val, &child_path, config)?);
             }
         } else {
             // Key only in left - removed
@@ -169,6 +174,8 @@ fn diff_objects_ordered_linear(
             });
         }
     }
+
+    Ok(())
 }
 
 /// Ordered comparison for larger objects using HashSet for O(1) lookups
@@ -180,7 +187,7 @@ fn diff_objects_ordered_hashset(
     ops: &mut Vec<DiffOp>,
     left_keys: &HashSet<&str>,
     right_keys: &HashSet<&str>,
-) {
+) -> Result<(), JsonDiffError> {
     let left_order: Vec<&str> = left.iter().map(|(k, _)| k).collect();
     let right_order: Vec<&str> = right.iter().map(|(k, _)| k).collect();
 
@@ -204,7 +211,7 @@ fn diff_objects_ordered_hashset(
                 }
             } else {
                 // Same position - recurse
-                ops.extend(diff_values(left_val, right_val, &child_path, config));
+                ops.extend(diff_values(left_val, right_val, &child_path, config)?);
             }
         } else {
             // Key only in left - removed
@@ -225,6 +232,8 @@ fn diff_objects_ordered_hashset(
             });
         }
     }
+
+    Ok(())
 }
 
 /// Check if two values are equal (deep comparison)

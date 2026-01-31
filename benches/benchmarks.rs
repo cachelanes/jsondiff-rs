@@ -82,6 +82,7 @@ fn bench_diff_objects(c: &mut Criterion) {
     let config = DiffConfig {
         array_mode: ArrayCompareMode::Ordered,
         ordered_objects: false,
+        set_keys: None,
     };
     let engine = DiffEngine::new(config);
 
@@ -95,7 +96,7 @@ fn bench_diff_objects(c: &mut Criterion) {
             BenchmarkId::new("identical", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -110,7 +111,7 @@ fn bench_diff_objects(c: &mut Criterion) {
             BenchmarkId::new("10pct_diff", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -125,7 +126,7 @@ fn bench_diff_objects(c: &mut Criterion) {
             BenchmarkId::new("50pct_diff", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -140,7 +141,7 @@ fn bench_diff_objects(c: &mut Criterion) {
             BenchmarkId::new("100pct_diff_worst", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -159,6 +160,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
     let ordered_config = DiffConfig {
         array_mode: ArrayCompareMode::Ordered,
         ordered_objects: false,
+        set_keys: None,
     };
     let ordered_engine = DiffEngine::new(ordered_config);
 
@@ -166,6 +168,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
     let set_config = DiffConfig {
         array_mode: ArrayCompareMode::Set,
         ordered_objects: false,
+        set_keys: None,
     };
     let set_engine = DiffEngine::new(set_config);
 
@@ -173,6 +176,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
     let multiset_config = DiffConfig {
         array_mode: ArrayCompareMode::MultiSet,
         ordered_objects: false,
+        set_keys: None,
     };
     let multiset_engine = DiffEngine::new(multiset_config);
 
@@ -186,7 +190,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("ordered_identical", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -208,7 +212,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("ordered_10pct_diff", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -232,7 +236,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("ordered_5pct_end_diff", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -254,7 +258,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("set_50pct_overlap", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| set_engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| set_engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -275,7 +279,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("multiset_few_unique", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| multiset_engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| multiset_engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -296,7 +300,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("multiset_50pct_overlap", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| multiset_engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| multiset_engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -314,6 +318,7 @@ fn bench_nested_diff(c: &mut Criterion) {
     let config = DiffConfig {
         array_mode: ArrayCompareMode::Ordered,
         ordered_objects: false,
+        set_keys: None,
     };
     let engine = DiffEngine::new(config);
 
@@ -329,7 +334,7 @@ fn bench_nested_diff(c: &mut Criterion) {
             BenchmarkId::new("depth", depth),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -366,6 +371,7 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
     let config = DiffConfig {
         array_mode: ArrayCompareMode::Ordered,
         ordered_objects: false,
+        set_keys: None,
     };
     let engine = DiffEngine::new(config);
 
@@ -380,7 +386,7 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
             BenchmarkId::new("identical", "india_geojson"),
             &india_osm,
             |b, val| {
-                b.iter(|| engine.diff(black_box(val), black_box(val)));
+                b.iter(|| engine.diff(black_box(val), black_box(val)).unwrap());
             },
         );
 
@@ -389,7 +395,7 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
             BenchmarkId::new("diff", "india_osm_vs_composite"),
             &(&india_osm, &india_composite),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
 
@@ -398,7 +404,7 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
             BenchmarkId::new("diff", "india_osm_vs_soi"),
             &(&india_osm, &india_soi),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
 
@@ -407,7 +413,7 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
             BenchmarkId::new("diff", "india_composite_vs_soi"),
             &(&india_composite, &india_soi),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
@@ -426,7 +432,7 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
             BenchmarkId::new("identical", "vscode_package_lock"),
             &v1_95,
             |b, val| {
-                b.iter(|| engine.diff(black_box(val), black_box(val)));
+                b.iter(|| engine.diff(black_box(val), black_box(val)).unwrap());
             },
         );
 
@@ -435,7 +441,7 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
             BenchmarkId::new("diff_8pct", "vscode_1.95_vs_1.100"),
             &(&v1_95, &v1_100),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
 
@@ -444,7 +450,7 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
             BenchmarkId::new("diff_18pct", "vscode_1.94_vs_1.95"),
             &(&v1_94, &v1_95),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
 
@@ -453,7 +459,7 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
             BenchmarkId::new("diff_42pct", "vscode_1.94_vs_1.108"),
             &(&v1_94, &v1_108),
             |b, (left, right)| {
-                b.iter(|| engine.diff(black_box(*left), black_box(*right)));
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
             },
         );
     }
