@@ -25,6 +25,9 @@ pub enum JsonDiffError {
         path2: String,
     },
 
+    #[error("invalid --set-key argument \"{arg}\": {reason}")]
+    InvalidSetKey { arg: String, reason: String },
+
     #[error("Output error: {0}")]
     OutputError(#[from] std::io::Error),
 }
@@ -35,7 +38,7 @@ impl JsonDiffError {
             Self::FileNotFound(_) => 2,
             Self::InvalidJson { .. } => 3,
             Self::FileRead { .. } => 4,
-            Self::SetKeyMissing { .. } | Self::SetKeyDuplicate { .. } => 5,
+            Self::SetKeyMissing { .. } | Self::SetKeyDuplicate { .. } | Self::InvalidSetKey { .. } => 5,
             _ => 1,
         }
     }

@@ -44,7 +44,7 @@ fn run() -> Result<(), JsonDiffError> {
             &args.set_keys,
             args.set_key_allow_missing,
             args.set_key_allow_duplicates,
-        ))
+        )?)
     };
 
     // Build diff configuration
@@ -96,7 +96,7 @@ fn parse_set_key_args(
     set_keys: &[String],
     allow_missing: bool,
     allow_duplicates: bool,
-) -> SetKeyConfig {
+) -> Result<SetKeyConfig, JsonDiffError> {
     let mut paths: HashMap<String, Vec<String>> = HashMap::new();
 
     for arg in set_keys {
@@ -104,14 +104,23 @@ fn parse_set_key_args(
             Some(pos) => (arg[..pos].to_string(), arg[pos + 1..].to_string()),
             None => (String::new(), arg.clone()),
         };
-        paths.entry(array_path).or_default().push(key_field);
+        if key_field.is_empty() {
+            return Err(JsonDiffError::InvalidSetKey {
+                arg: arg.clone(),
+                reason: "empty key field name".to_string(),
+            });
+        }
+        let entry = paths.entry(array_path).or_default();
+        if !entry.contains(&key_field) {
+            entry.push(key_field);
+        }
     }
 
-    SetKeyConfig {
+    Ok(SetKeyConfig {
         paths,
         allow_missing,
         allow_duplicates,
-    }
+    })
 }
 
 fn load_inputs(args: &Args) -> Result<(Value, Value), JsonDiffError> {

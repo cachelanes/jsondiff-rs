@@ -439,13 +439,14 @@ pub fn diff_arrays_with_set_key(
 ) -> Result<Vec<DiffOp>, JsonDiffError> {
     let mut ops = Vec::new();
 
-    // Partition elements into keyed (have all key fields) and unkeyed
-    let mut left_keyed: Vec<(Vec<(String, String)>, &Value)> = Vec::new();
+    // Partition elements into keyed (have all key fields) and unkeyed.
+    // Track original array indices for accurate error messages.
+    let mut left_keyed: Vec<(Vec<(String, String)>, &Value, usize)> = Vec::new();
     let mut left_unkeyed: Vec<&Value> = Vec::new();
 
     for (i, val) in left.iter().enumerate() {
         match extract_set_key(val, key_fields) {
-            Some(key) => left_keyed.push((key, val)),
+            Some(key) => left_keyed.push((key, val, i)),
             None => {
                 if !set_key_config.allow_missing {
                     let missing_field = find_first_missing_field(val, key_fields);
@@ -459,12 +460,12 @@ pub fn diff_arrays_with_set_key(
         }
     }
 
-    let mut right_keyed: Vec<(Vec<(String, String)>, &Value)> = Vec::new();
+    let mut right_keyed: Vec<(Vec<(String, String)>, &Value, usize)> = Vec::new();
     let mut right_unkeyed: Vec<&Value> = Vec::new();
 
     for (i, val) in right.iter().enumerate() {
         match extract_set_key(val, key_fields) {
-            Some(key) => right_keyed.push((key, val)),
+            Some(key) => right_keyed.push((key, val, i)),
             None => {
                 if !set_key_config.allow_missing {
                     let missing_field = find_first_missing_field(val, key_fields);
@@ -478,18 +479,22 @@ pub fn diff_arrays_with_set_key(
         }
     }
 
-    // Build key→value maps (first-match-wins for duplicates)
+    // Build key→value maps (first-match-wins for duplicates).
+    // Use a HashSet for O(1) duplicate detection.
+    let mut left_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut left_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
-    for (i, (key, val)) in left_keyed.iter().enumerate() {
+    for (key, val, orig_idx) in &left_keyed {
         let key_str = set_key_to_string(key);
-        let is_dup = left_map.iter().any(|(k, _, _)| *k == key_str);
-        if is_dup {
+        if !left_seen.insert(key_str.clone()) {
             if !set_key_config.allow_duplicates {
-                let first_idx = left_keyed.iter().position(|(k, _)| set_key_to_string(k) == key_str).unwrap();
+                let first_orig_idx = left_keyed.iter()
+                    .find(|(k, _, _)| set_key_to_string(k) == key_str)
+                    .map(|(_, _, idx)| *idx)
+                    .unwrap();
                 return Err(JsonDiffError::SetKeyDuplicate {
                     key: key_str,
-                    path1: format!("{}[{}]", path, first_idx),
-                    path2: format!("{}[{}]", path, i),
+                    path1: format!("{}[{}]", path, first_orig_idx),
+                    path2: format!("{}[{}]", path, orig_idx),
                 });
             }
             // first-match-wins: skip duplicate
@@ -498,17 +503,20 @@ pub fn diff_arrays_with_set_key(
         left_map.push((key_str, key.clone(), val));
     }
 
+    let mut right_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut right_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
-    for (i, (key, val)) in right_keyed.iter().enumerate() {
+    for (key, val, orig_idx) in &right_keyed {
         let key_str = set_key_to_string(key);
-        let is_dup = right_map.iter().any(|(k, _, _)| *k == key_str);
-        if is_dup {
+        if !right_seen.insert(key_str.clone()) {
             if !set_key_config.allow_duplicates {
-                let first_idx = right_keyed.iter().position(|(k, _)| set_key_to_string(k) == key_str).unwrap();
+                let first_orig_idx = right_keyed.iter()
+                    .find(|(k, _, _)| set_key_to_string(k) == key_str)
+                    .map(|(_, _, idx)| *idx)
+                    .unwrap();
                 return Err(JsonDiffError::SetKeyDuplicate {
                     key: key_str,
-                    path1: format!("{}[{}]", path, first_idx),
-                    path2: format!("{}[{}]", path, i),
+                    path1: format!("{}[{}]", path, first_orig_idx),
+                    path2: format!("{}[{}]", path, orig_idx),
                 });
             }
             continue;
