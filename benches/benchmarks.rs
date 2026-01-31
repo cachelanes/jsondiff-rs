@@ -3,7 +3,8 @@ use sonic_rs::Value;
 use std::fs;
 
 use jsondiff::diff::engine::DiffEngine;
-use jsondiff::diff::types::{ArrayCompareMode, DiffConfig};
+use jsondiff::diff::types::{ArrayCompareMode, DiffConfig, SetKeyConfig};
+use std::collections::HashMap;
 
 // Path to benchmark fixtures
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/benches/fixtures");
@@ -467,12 +468,167 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
     group.finish();
 }
 
+// ============================================================================
+// Set-Key Array Diff Benchmarks
+// ============================================================================
+
+/// Generate a JSON array of objects with id fields, wrapped in a root object.
+/// Each object has: {"id": i, "name": "name_i", "value": "val_i"}
+fn generate_keyed_array(n: usize, key: &str) -> String {
+    let elements: Vec<String> = (0..n)
+        .map(|i| format!(r#"{{"{}": {}, "name": "name_{}", "value": "val_{}"}}"#, key, i, i, i))
+        .collect();
+    format!(r#"{{"items": [{}]}}"#, elements.join(", "))
+}
+
+/// Generate a pair of keyed arrays where the second is reordered + has modifications.
+/// `diff_percent` of elements have their "value" field changed.
+/// `remove_count` elements are removed, `add_count` elements are added.
+fn generate_keyed_diff_pair(
+    n: usize,
+    diff_percent: usize,
+    remove_count: usize,
+    add_count: usize,
+) -> (String, String) {
+    let diff_count = (n * diff_percent) / 100;
+
+    // Left: sequential order
+    let left_elements: Vec<String> = (0..n)
+        .map(|i| format!(r#"{{"id": {}, "name": "name_{}", "value": "val_{}"}}"#, i, i, i))
+        .collect();
+
+    // Right: reverse order, with modifications, removals, and additions
+    let mut right_elements: Vec<String> = (0..n)
+        .rev()
+        .filter(|i| *i >= remove_count) // remove first `remove_count` elements
+        .map(|i| {
+            if i < diff_count + remove_count {
+                format!(
+                    r#"{{"id": {}, "name": "name_{}", "value": "changed_{}"}}"#,
+                    i, i, i
+                )
+            } else {
+                format!(r#"{{"id": {}, "name": "name_{}", "value": "val_{}"}}"#, i, i, i)
+            }
+        })
+        .collect();
+
+    // Add new elements
+    for i in 0..add_count {
+        let new_id = n + i;
+        right_elements.push(format!(
+            r#"{{"id": {}, "name": "new_{}", "value": "new_val_{}"}}"#,
+            new_id, new_id, new_id
+        ));
+    }
+
+    (
+        format!(r#"{{"items": [{}]}}"#, left_elements.join(", ")),
+        format!(r#"{{"items": [{}]}}"#, right_elements.join(", ")),
+    )
+}
+
+fn make_set_key_config(path: &str, key: &str) -> Option<SetKeyConfig> {
+    let mut paths = HashMap::new();
+    paths.insert(path.to_string(), vec![key.to_string()]);
+    Some(SetKeyConfig {
+        paths,
+        allow_missing: true,
+        allow_duplicates: true,
+    })
+}
+
+fn bench_diff_set_key(c: &mut Criterion) {
+    let mut group = c.benchmark_group("diff_set_key");
+
+    let config = DiffConfig {
+        array_mode: ArrayCompareMode::Ordered,
+        ordered_objects: false,
+        set_keys: make_set_key_config("items", "id"),
+    };
+    let engine = DiffEngine::new(config);
+
+    // Identical arrays (reordered) - best case: all matched, no diffs
+    for size in [10, 100, 500, 1000].iter() {
+        let json1 = generate_keyed_array(*size, "id");
+        // Reverse the array order for the second file
+        let elements_rev: Vec<String> = (0..*size)
+            .rev()
+            .map(|i| format!(r#"{{"id": {}, "name": "name_{}", "value": "val_{}"}}"#, i, i, i))
+            .collect();
+        let json2 = format!(r#"{{"items": [{}]}}"#, elements_rev.join(", "));
+
+        let left: Value = sonic_rs::from_str(&json1).unwrap();
+        let right: Value = sonic_rs::from_str(&json2).unwrap();
+
+        group.bench_with_input(
+            BenchmarkId::new("reordered_identical", size),
+            &(&left, &right),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
+            },
+        );
+    }
+
+    // 10% of values modified, no additions/removals
+    for size in [10, 100, 500, 1000].iter() {
+        let (json1, json2) = generate_keyed_diff_pair(*size, 10, 0, 0);
+        let left: Value = sonic_rs::from_str(&json1).unwrap();
+        let right: Value = sonic_rs::from_str(&json2).unwrap();
+
+        group.bench_with_input(
+            BenchmarkId::new("10pct_modified", size),
+            &(&left, &right),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
+            },
+        );
+    }
+
+    // 10% removed + 10% added (churn)
+    for size in [10, 100, 500, 1000].iter() {
+        let remove = *size / 10;
+        let add = *size / 10;
+        let (json1, json2) = generate_keyed_diff_pair(*size, 0, remove, add);
+        let left: Value = sonic_rs::from_str(&json1).unwrap();
+        let right: Value = sonic_rs::from_str(&json2).unwrap();
+
+        group.bench_with_input(
+            BenchmarkId::new("10pct_churn", size),
+            &(&left, &right),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
+            },
+        );
+    }
+
+    // 50% modified + 10% removed + 10% added (heavy diff)
+    for size in [10, 100, 500, 1000].iter() {
+        let remove = *size / 10;
+        let add = *size / 10;
+        let (json1, json2) = generate_keyed_diff_pair(*size, 50, remove, add);
+        let left: Value = sonic_rs::from_str(&json1).unwrap();
+        let right: Value = sonic_rs::from_str(&json2).unwrap();
+
+        group.bench_with_input(
+            BenchmarkId::new("50pct_modified_10pct_churn", size),
+            &(&left, &right),
+            |b, (left, right)| {
+                b.iter(|| engine.diff(black_box(*left), black_box(*right)).unwrap());
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_diff_objects,
     bench_diff_arrays,
     bench_nested_diff,
     bench_real_world_fixtures,
+    bench_diff_set_key,
 );
 
 criterion_main!(benches);
