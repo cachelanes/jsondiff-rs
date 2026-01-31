@@ -120,3 +120,44 @@ fn snapshot_simple_diff_compact() {
     ]);
     assert_snapshot!("simple_diff_compact", output);
 }
+
+// ============================================================================
+// Set-Key Snapshots
+// ============================================================================
+
+#[test]
+fn snapshot_set_key_pretty() {
+    let output = jsondiff_output(&[
+        "tests/fixtures/set_key_users_old.json",
+        "tests/fixtures/set_key_users_new.json",
+        "--set-key",
+        "users.id",
+        "--no-color",
+    ]);
+    assert_snapshot!("set_key_pretty", output);
+}
+
+#[test]
+fn snapshot_set_key_json() {
+    let output = jsondiff_output(&[
+        "tests/fixtures/set_key_users_old.json",
+        "tests/fixtures/set_key_users_new.json",
+        "--set-key",
+        "users.id",
+        "-f",
+        "json",
+    ]);
+    assert_snapshot!("set_key_json", output);
+}
+
+#[test]
+fn snapshot_set_key_root_array() {
+    let output = jsondiff_output(&[
+        "tests/fixtures/set_key_root_old.json",
+        "tests/fixtures/set_key_root_new.json",
+        "--set-key",
+        "id",
+        "--no-color",
+    ]);
+    assert_snapshot!("set_key_root_array", output);
+}

@@ -1,0 +1,25 @@
+---
+source: tests/snapshots.rs
+assertion_line: 137
+expression: output
+---
+$.users[id=2]
+- {
+-     "id": 2,
+-     "name": "Bob",
+-     "role": "user"
+-   }
+
+$.users[id=3].role
+- "user"
++ "moderator"
+
+$.users[id=4]
++ {
++     "id": 4,
++     "name": "Diana",
++     "role": "user"
++   }
+
+----------------------------------------
+1 added, 1 removed, 1 modified
