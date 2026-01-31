@@ -12,6 +12,11 @@ use std::hash::{Hash, Hasher};
 /// Below this size, linear search is faster due to cache locality.
 const HASHMAP_THRESHOLD: usize = 20;
 
+/// Threshold (total elements across both arrays) for using HashSet in set-key
+/// duplicate detection. String key hashing is cheap but allocation overhead
+/// dominates for small arrays; linear scan wins below ~250 elements per side.
+const SET_KEY_HASHMAP_THRESHOLD: usize = 500;
+
 /// Compare arrays preserving order using a simple LCS-based approach
 pub fn diff_arrays_ordered(
     left: &[Value],
@@ -480,48 +485,90 @@ pub fn diff_arrays_with_set_key(
     }
 
     // Build key→value maps (first-match-wins for duplicates).
-    // Use a HashSet for O(1) duplicate detection.
-    let mut left_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut left_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
-    for (key, val, orig_idx) in &left_keyed {
-        let key_str = set_key_to_string(key);
-        if !left_seen.insert(key_str.clone()) {
-            if !set_key_config.allow_duplicates {
-                let first_orig_idx = left_keyed.iter()
-                    .find(|(k, _, _)| set_key_to_string(k) == key_str)
-                    .map(|(_, _, idx)| *idx)
-                    .unwrap();
-                return Err(JsonDiffError::SetKeyDuplicate {
-                    key: key_str,
-                    path1: format!("{}[{}]", path, first_orig_idx),
-                    path2: format!("{}[{}]", path, orig_idx),
-                });
-            }
-            // first-match-wins: skip duplicate
-            continue;
-        }
-        left_map.push((key_str, key.clone(), val));
-    }
+    // Use linear scan for small arrays (cache-friendly), HashSet for large ones.
+    let use_hashset = left_keyed.len() + right_keyed.len() > SET_KEY_HASHMAP_THRESHOLD;
 
-    let mut right_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut left_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
     let mut right_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
-    for (key, val, orig_idx) in &right_keyed {
-        let key_str = set_key_to_string(key);
-        if !right_seen.insert(key_str.clone()) {
-            if !set_key_config.allow_duplicates {
-                let first_orig_idx = right_keyed.iter()
-                    .find(|(k, _, _)| set_key_to_string(k) == key_str)
-                    .map(|(_, _, idx)| *idx)
-                    .unwrap();
-                return Err(JsonDiffError::SetKeyDuplicate {
-                    key: key_str,
-                    path1: format!("{}[{}]", path, first_orig_idx),
-                    path2: format!("{}[{}]", path, orig_idx),
-                });
+
+    if use_hashset {
+        let mut left_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (key, val, orig_idx) in &left_keyed {
+            let key_str = set_key_to_string(key);
+            if !left_seen.insert(key_str.clone()) {
+                if !set_key_config.allow_duplicates {
+                    let first_orig_idx = left_keyed.iter()
+                        .find(|(k, _, _)| set_key_to_string(k) == key_str)
+                        .map(|(_, _, idx)| *idx)
+                        .unwrap();
+                    return Err(JsonDiffError::SetKeyDuplicate {
+                        key: key_str,
+                        path1: format!("{}[{}]", path, first_orig_idx),
+                        path2: format!("{}[{}]", path, orig_idx),
+                    });
+                }
+                continue;
             }
-            continue;
+            left_map.push((key_str, key.clone(), val));
         }
-        right_map.push((key_str, key.clone(), val));
+
+        let mut right_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (key, val, orig_idx) in &right_keyed {
+            let key_str = set_key_to_string(key);
+            if !right_seen.insert(key_str.clone()) {
+                if !set_key_config.allow_duplicates {
+                    let first_orig_idx = right_keyed.iter()
+                        .find(|(k, _, _)| set_key_to_string(k) == key_str)
+                        .map(|(_, _, idx)| *idx)
+                        .unwrap();
+                    return Err(JsonDiffError::SetKeyDuplicate {
+                        key: key_str,
+                        path1: format!("{}[{}]", path, first_orig_idx),
+                        path2: format!("{}[{}]", path, orig_idx),
+                    });
+                }
+                continue;
+            }
+            right_map.push((key_str, key.clone(), val));
+        }
+    } else {
+        for (key, val, orig_idx) in &left_keyed {
+            let key_str = set_key_to_string(key);
+            if left_map.iter().any(|(k, _, _)| *k == key_str) {
+                if !set_key_config.allow_duplicates {
+                    let first_orig_idx = left_keyed.iter()
+                        .find(|(k, _, _)| set_key_to_string(k) == key_str)
+                        .map(|(_, _, idx)| *idx)
+                        .unwrap();
+                    return Err(JsonDiffError::SetKeyDuplicate {
+                        key: key_str,
+                        path1: format!("{}[{}]", path, first_orig_idx),
+                        path2: format!("{}[{}]", path, orig_idx),
+                    });
+                }
+                continue;
+            }
+            left_map.push((key_str, key.clone(), val));
+        }
+
+        for (key, val, orig_idx) in &right_keyed {
+            let key_str = set_key_to_string(key);
+            if right_map.iter().any(|(k, _, _)| *k == key_str) {
+                if !set_key_config.allow_duplicates {
+                    let first_orig_idx = right_keyed.iter()
+                        .find(|(k, _, _)| set_key_to_string(k) == key_str)
+                        .map(|(_, _, idx)| *idx)
+                        .unwrap();
+                    return Err(JsonDiffError::SetKeyDuplicate {
+                        key: key_str,
+                        path1: format!("{}[{}]", path, first_orig_idx),
+                        path2: format!("{}[{}]", path, orig_idx),
+                    });
+                }
+                continue;
+            }
+            right_map.push((key_str, key.clone(), val));
+        }
     }
 
     // Find matched pairs and compare recursively (left order for determinism)
