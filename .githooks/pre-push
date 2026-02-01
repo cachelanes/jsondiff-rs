@@ -1,12 +1,15 @@
 #!/bin/bash
-# Pre-push hook: run tests before pushing
+# Pre-push hook: run fmt, clippy, and tests before pushing
 
-echo "Running tests before push..."
+set -e
+
+echo "Running cargo fmt check..."
+cargo fmt -- --check
+
+echo "Running cargo clippy..."
+cargo clippy --all-targets -- -D warnings
+
+echo "Running cargo test..."
 cargo test --quiet
 
-if [ $? -ne 0 ]; then
-    echo "Tests failed. Push aborted."
-    exit 1
-fi
-
-echo "Tests passed."
+echo "All checks passed."
