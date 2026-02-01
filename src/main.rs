@@ -1,6 +1,7 @@
 use clap::Parser;
 use colored::Colorize;
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::ExitCode;
@@ -13,7 +14,7 @@ mod parser;
 
 use cli::args::{Args, OutputFormat};
 use diff::engine::DiffEngine;
-use diff::types::{ArrayCompareMode, DiffConfig};
+use diff::types::{ArrayCompareMode, DiffConfig, SetKeyConfig};
 use error::JsonDiffError;
 use output::formatter::{format_as_json, format_as_summary, PrettyFormatter};
 use parser::json::JsonParser;
@@ -35,6 +36,17 @@ fn run() -> Result<(), JsonDiffError> {
     // Determine color output
     let colors_enabled = !args.no_color && atty::is(atty::Stream::Stdout);
 
+    // Parse set-key arguments into config
+    let set_keys = if args.set_keys.is_empty() {
+        None
+    } else {
+        Some(parse_set_key_args(
+            &args.set_keys,
+            args.set_key_allow_missing,
+            args.set_key_allow_duplicates,
+        )?)
+    };
+
     // Build diff configuration
     let config = DiffConfig {
         array_mode: if args.array_as_set {
@@ -45,6 +57,7 @@ fn run() -> Result<(), JsonDiffError> {
             ArrayCompareMode::Ordered
         },
         ordered_objects: args.ordered_objects,
+        set_keys,
     };
 
     // Parse input files
@@ -52,7 +65,7 @@ fn run() -> Result<(), JsonDiffError> {
 
     // Compute diff
     let engine = DiffEngine::new(config);
-    let result = engine.diff(&left, &right);
+    let result = engine.diff(&left, &right)?;
 
     // Format output
     let mut stdout = io::stdout().lock();
@@ -72,6 +85,42 @@ fn run() -> Result<(), JsonDiffError> {
     }
 
     Ok(())
+}
+
+/// Parse --set-key arguments into a SetKeyConfig.
+/// Each argument is "path.key" where the last dot-separated segment is the key field
+/// and everything before it is the array path.
+/// No dot means root array: "id" → path="" key="id"
+/// Same path prefixes are grouped: "users.id" + "users.type" → {"users" => ["id", "type"]}
+fn parse_set_key_args(
+    set_keys: &[String],
+    allow_missing: bool,
+    allow_duplicates: bool,
+) -> Result<SetKeyConfig, JsonDiffError> {
+    let mut paths: HashMap<String, Vec<String>> = HashMap::new();
+
+    for arg in set_keys {
+        let (array_path, key_field) = match arg.rfind('.') {
+            Some(pos) => (arg[..pos].to_string(), arg[pos + 1..].to_string()),
+            None => (String::new(), arg.clone()),
+        };
+        if key_field.is_empty() {
+            return Err(JsonDiffError::InvalidSetKey {
+                arg: arg.clone(),
+                reason: "empty key field name".to_string(),
+            });
+        }
+        let entry = paths.entry(array_path).or_default();
+        if !entry.contains(&key_field) {
+            entry.push(key_field);
+        }
+    }
+
+    Ok(SetKeyConfig {
+        paths,
+        allow_missing,
+        allow_duplicates,
+    })
 }
 
 fn load_inputs(args: &Args) -> Result<(Value, Value), JsonDiffError> {

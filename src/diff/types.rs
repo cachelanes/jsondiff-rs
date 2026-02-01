@@ -1,4 +1,5 @@
 use sonic_rs::Value;
+use std::collections::HashMap;
 use std::fmt;
 
 /// Represents a single difference between two JSON values
@@ -29,6 +30,8 @@ pub enum PathSegment {
     Index(usize),
     SetMarker,
     MultiSetMarker,
+    /// Key-based match for set-key mode, e.g. [id=1] or [name=foo,type=bar]
+    KeyMatch(Vec<(String, String)>),
 }
 
 impl JsonPath {
@@ -61,6 +64,26 @@ impl JsonPath {
         new_path.segments.push(PathSegment::MultiSetMarker);
         new_path
     }
+
+    pub fn append_key_match(&self, keys: Vec<(String, String)>) -> Self {
+        let mut new_path = self.clone();
+        new_path.segments.push(PathSegment::KeyMatch(keys));
+        new_path
+    }
+
+    /// Convert path to a dot-separated key-only string for set-key config lookup.
+    /// Strips Root, Index, SetMarker, MultiSetMarker, KeyMatch segments.
+    /// e.g. $.users[id=1].orders → "users.orders"
+    pub fn to_set_key_path(&self) -> String {
+        self.segments
+            .iter()
+            .filter_map(|s| match s {
+                PathSegment::Key(k) => Some(k.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(".")
+    }
 }
 
 impl fmt::Display for JsonPath {
@@ -78,10 +101,35 @@ impl fmt::Display for JsonPath {
                 PathSegment::Index(i) => write!(f, "[{}]", i)?,
                 PathSegment::SetMarker => write!(f, "[{{}}]")?,
                 PathSegment::MultiSetMarker => write!(f, "[[{{}}]]")?,
+                PathSegment::KeyMatch(pairs) => {
+                    write!(f, "[")?;
+                    for (i, (key, val)) in pairs.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ",")?;
+                        }
+                        // Quote values that contain commas, equals, or quotes
+                        if val.contains(',') || val.contains('=') || val.contains('"') {
+                            write!(f, "{}=\"{}\"", key, val)?;
+                        } else {
+                            write!(f, "{}={}", key, val)?;
+                        }
+                    }
+                    write!(f, "]")?;
+                }
             }
         }
         Ok(())
     }
+}
+
+/// Configuration for set-key based array matching
+#[derive(Debug, Clone)]
+pub struct SetKeyConfig {
+    /// Map from array path (dot-separated) to key field names
+    /// e.g. "users" -> ["id"], "orders" -> ["order_id", "type"]
+    pub paths: HashMap<String, Vec<String>>,
+    pub allow_missing: bool,
+    pub allow_duplicates: bool,
 }
 
 /// Configuration for the diff algorithm
@@ -89,6 +137,7 @@ impl fmt::Display for JsonPath {
 pub struct DiffConfig {
     pub array_mode: ArrayCompareMode,
     pub ordered_objects: bool,
+    pub set_keys: Option<SetKeyConfig>,
 }
 
 impl Default for DiffConfig {
@@ -96,6 +145,7 @@ impl Default for DiffConfig {
         Self {
             array_mode: ArrayCompareMode::Ordered,
             ordered_objects: false,
+            set_keys: None,
         }
     }
 }

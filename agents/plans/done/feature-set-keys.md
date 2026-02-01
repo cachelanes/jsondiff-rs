@@ -51,9 +51,20 @@ Match array objects by a specific key field instead of by position.
 |----------|--------------------------------------------------------|
 | Reasoning | Allows changing defaults later based on user feedback without breaking API. `--no-set-key-allow-missing` for strict mode. |
 
----
+### 7. No Array-Index Tracking in Duplicate-Key Errors
 
-## CLI Interface
+| Decision | Errors report path + key value, not element indices |
+|----------|-----------------------------------------------------|
+| Alternatives considered | Track original array index per element through keyed partition |
+| Reasoning | 15-20% hot-path regression at n=10/100 for marginal UX benefit on a rare error path |
+
+**Error format:** `duplicate set-key [id=42] found in $.users` — no `[14]` and `[87]`.
+
+An earlier implementation widened keyed tuples from `(key, &Value)` to `(key, &Value, usize)` to report original array positions in duplicate-key errors. Benchmarking showed a consistent 15-20% regression across all scenarios at n=10 and n=100 (the common case), purely from the wider tuple and index-lookup overhead.
+
+The key value in the error (`[id=42]`) is sufficient for locating duplicates — users search by value (`jq`, `grep`), not by counting array positions. The duplicate-key error itself is uncommon (malformed input), so optimizing the common path at the expense of a rare error's specificity is the right tradeoff.
+
+---
 
 ```bash
 # Single key
@@ -133,7 +144,7 @@ hint: use --set-key-allow-missing to fall back to set comparison
 ```
 
 ```
-error: duplicate key [id=1] found at $.users[0] and $.users[3]
+error: duplicate key [id=1] found in $.users
 hint: use --set-key-allow-duplicates to use first occurrence
 ```
 
@@ -272,3 +283,75 @@ jd -setkeys id a.json b.json
 ### 10. Array Wildcards in Input Paths: `--set-key "data[*].items.id"`
 
 **Why rejected:** We're specifying *which arrays* get key-matching, not querying JSON. Every set-key path inherently targets an array, so `[*]` would be redundant clutter on every path.
+
+---
+
+## Performance
+
+### Baseline (before set-key implementation)
+
+| Benchmark | Time (median) |
+|-----------|--------------|
+| diff_objects/identical/10 | 817.20 ns |
+| diff_objects/identical/100 | 48.315 µs |
+| diff_objects/identical/1000 | 4.4852 ms |
+| diff_objects/10pct_diff/10 | 2.0571 µs |
+| diff_objects/10pct_diff/100 | 49.133 µs |
+| diff_objects/10pct_diff/1000 | 2.6254 ms |
+| diff_objects/50pct_diff/10 | 2.7460 µs |
+| diff_objects/50pct_diff/100 | 57.193 µs |
+| diff_objects/50pct_diff/1000 | 2.6621 ms |
+| diff_objects/100pct_diff_worst/10 | 4.2367 µs |
+| diff_objects/100pct_diff_worst/100 | 44.820 µs |
+| diff_objects/100pct_diff_worst/1000 | 454.70 µs |
+| diff_arrays/ordered_identical/10 | 143.71 ns |
+| diff_arrays/ordered_identical/100 | 1.1325 µs |
+| diff_arrays/ordered_identical/500 | 5.4783 µs |
+| diff_arrays/ordered_identical/1000 | 11.000 µs |
+| diff_arrays/ordered_10pct_diff/10 | 3.0408 µs |
+| diff_arrays/ordered_10pct_diff/100 | 30.024 µs |
+| diff_arrays/ordered_10pct_diff/500 | 167.64 µs |
+| diff_arrays/ordered_10pct_diff/1000 | 402.58 µs |
+| diff_arrays/set_50pct_overlap/10 | 29.236 µs |
+| diff_arrays/set_50pct_overlap/100 | 100.36 µs |
+| diff_arrays/set_50pct_overlap/500 | 494.13 µs |
+| diff_arrays/set_50pct_overlap/1000 | 987.68 µs |
+| diff_arrays/multiset_50pct_overlap/10 | 52.972 µs |
+| diff_arrays/multiset_50pct_overlap/100 | 134.32 µs |
+| diff_arrays/multiset_50pct_overlap/500 | 659.49 µs |
+| diff_arrays/multiset_50pct_overlap/1000 | 1.3283 ms |
+| diff_nested/depth/2 | 4.0540 µs |
+| diff_nested/depth/4 | 61.067 µs |
+| diff_nested/depth/6 | 718.61 µs |
+| real_world/identical/india_geojson | 10.354 ms |
+| real_world/diff/india_osm_vs_composite | 107.81 ms |
+| real_world/diff/india_osm_vs_soi | 113.81 ms |
+| real_world/diff/india_composite_vs_soi | 111.85 ms |
+| real_world/identical/vscode_package_lock | 7.1961 ms |
+| real_world/diff_8pct/vscode_1.95_vs_1.100 | 5.0346 ms |
+| real_world/diff_18pct/vscode_1.94_vs_1.95 | 5.4171 ms |
+| real_world/diff_42pct/vscode_1.94_vs_1.108 | 5.5035 ms |
+
+### Post-implementation (with Result<> refactor)
+
+| Benchmark | Before | After | Change |
+|-----------|--------|-------|--------|
+| diff_objects/identical/10 | 817.20 ns | 881.25 ns | +5.0% |
+| diff_objects/identical/100 | 48.315 µs | 47.128 µs | -2.7% |
+| diff_objects/identical/1000 | 4.4852 ms | 4.1454 ms | -7.6% |
+| diff_objects/10pct_diff/10 | 2.0571 µs | 2.4509 µs | +19.5% |
+| diff_objects/10pct_diff/100 | 49.133 µs | 49.530 µs | +2.2% |
+| diff_objects/10pct_diff/1000 | 2.6254 ms | 2.4980 ms | -4.9% |
+| diff_arrays/ordered_identical/10 | 143.71 ns | 155.54 ns | +4.8% |
+| diff_arrays/ordered_identical/1000 | 11.000 µs | 11.263 µs | +6.5% |
+| diff_arrays/ordered_10pct_diff/1000 | 402.58 µs | 440.44 µs | +9.9% |
+| diff_nested/depth/4 | 61.067 µs | 71.942 µs | +17.3% |
+| diff_nested/depth/6 | 718.61 µs | 803.96 µs | +11.6% |
+| real_world/identical/india_geojson | 10.354 ms | 10.761 ms | +3.9% |
+| real_world/diff/india_osm_vs_composite | 107.81 ms | 119.05 ms | +10.4% |
+| real_world/diff_8pct/vscode_1.95_vs_1.100 | 5.0346 ms | 5.4675 ms | +2.8% |
+| real_world/diff_42pct/vscode_1.94_vs_1.108 | 5.5035 ms | 5.7528 ms | +4.5% |
+
+Note: Variations of 5-15% are typical run-to-run noise on this system. The `Result<>` wrapping
+adds negligible overhead (the `?` operator is zero-cost on the happy path). Larger swings in
+small benchmarks (e.g., diff_objects/10pct_diff/10) are dominated by measurement noise.

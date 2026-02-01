@@ -31,6 +31,21 @@ pub struct Args {
     #[arg(short = 'o', long = "ordered-objects")]
     pub ordered_objects: bool,
 
+    /// Match array objects by a key field instead of position.
+    /// Format: "path.key" (e.g. "users.id", "data.items.sku").
+    /// No dot means root array (e.g. "id").
+    /// Multiple --set-key with same path prefix creates composite keys.
+    #[arg(long = "set-key", value_name = "PATH.KEY")]
+    pub set_keys: Vec<String>,
+
+    /// Allow elements missing the set-key field (falls back to set comparison)
+    #[arg(long = "set-key-allow-missing", default_value = "true", action = clap::ArgAction::Set, value_parser = clap::value_parser!(bool))]
+    pub set_key_allow_missing: bool,
+
+    /// Allow duplicate set-key values (uses first occurrence)
+    #[arg(long = "set-key-allow-duplicates", default_value = "true", action = clap::ArgAction::Set, value_parser = clap::value_parser!(bool))]
+    pub set_key_allow_duplicates: bool,
+
     /// Output format
     #[arg(short = 'f', long = "format", value_enum, default_value = "pretty")]
     pub format: OutputFormat,

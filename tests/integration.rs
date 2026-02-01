@@ -408,6 +408,441 @@ fn test_output_is_deterministic() {
 // Object Comparison Mode Tests
 // ============================================================================
 
+// ============================================================================
+// Set-Key Tests
+// ============================================================================
+
+#[test]
+fn test_set_key_basic() {
+    // With --set-key users.id, should match by id and show only real changes
+    jsondiff()
+        .args([
+            "tests/fixtures/set_key_users_old.json",
+            "tests/fixtures/set_key_users_new.json",
+        ])
+        .args(["--set-key", "users.id", "--no-color"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[id="))
+        .stdout(predicate::str::contains("role"))
+        // Bob (id=2) was removed
+        .stdout(predicate::str::contains("Bob"))
+        // Diana (id=4) was added
+        .stdout(predicate::str::contains("Diana"));
+}
+
+#[test]
+fn test_set_key_reorder_no_diff() {
+    // Identical objects in different order should show no differences
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(
+        file1,
+        r#"{{"items": [{{"id": 1, "v": "a"}}, {{"id": 2, "v": "b"}}]}}"#
+    )
+    .unwrap();
+    writeln!(
+        file2,
+        r#"{{"items": [{{"id": 2, "v": "b"}}, {{"id": 1, "v": "a"}}]}}"#
+    )
+    .unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--set-key", "items.id", "--no-color"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No differences found"));
+}
+
+#[test]
+fn test_set_key_root_array() {
+    // Root-level array with --set-key id (no dot)
+    jsondiff()
+        .args([
+            "tests/fixtures/set_key_root_old.json",
+            "tests/fixtures/set_key_root_new.json",
+        ])
+        .args(["--set-key", "id", "--no-color"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("$[id="))
+        // id=1 value changed from alpha to ALPHA
+        .stdout(predicate::str::contains("alpha"))
+        .stdout(predicate::str::contains("ALPHA"))
+        // id=2 removed
+        .stdout(predicate::str::contains("beta"))
+        // id=4 added
+        .stdout(predicate::str::contains("delta"));
+}
+
+#[test]
+fn test_set_key_composite() {
+    // Composite key: match by both type and region
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(
+        file1,
+        r#"[{{"type": "a", "region": "us", "v": 1}}, {{"type": "b", "region": "eu", "v": 2}}]"#
+    )
+    .unwrap();
+    writeln!(
+        file2,
+        r#"[{{"type": "b", "region": "eu", "v": 20}}, {{"type": "a", "region": "us", "v": 1}}]"#
+    )
+    .unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--set-key", "type", "--set-key", "region", "--no-color"])
+        .assert()
+        .success()
+        // Should show composite key notation
+        .stdout(predicate::str::contains("[type=b,region=eu]"));
+}
+
+#[test]
+fn test_set_key_missing_lenient() {
+    // Default lenient mode: elements missing the key field fall back to set comparison
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(
+        file1,
+        r#"[{{"id": 1, "v": "a"}}, {{"no_id": true, "v": "b"}}]"#
+    )
+    .unwrap();
+    writeln!(
+        file2,
+        r#"[{{"id": 1, "v": "a"}}, {{"no_id": true, "v": "c"}}]"#
+    )
+    .unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--set-key", "id", "--no-color"])
+        .assert()
+        .success()
+        // Unkeyed elements should use set marker [{}]
+        .stdout(predicate::str::contains("[{}]"));
+}
+
+#[test]
+fn test_set_key_missing_strict() {
+    // Strict mode: error on missing key field
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(
+        file1,
+        r#"[{{"id": 1, "v": "a"}}, {{"no_id": true}}]"#
+    )
+    .unwrap();
+    writeln!(
+        file2,
+        r#"[{{"id": 1, "v": "a"}}]"#
+    )
+    .unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args([
+            "--set-key",
+            "id",
+            "--set-key-allow-missing=false",
+            "--no-color",
+        ])
+        .assert()
+        .failure()
+        .code(5)
+        .stderr(predicate::str::contains("missing required key field"));
+}
+
+#[test]
+fn test_set_key_duplicates_lenient() {
+    // Default lenient mode: duplicate keys use first-match-wins
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(
+        file1,
+        r#"[{{"id": 1, "v": "first"}}, {{"id": 1, "v": "second"}}, {{"id": 2, "v": "x"}}]"#
+    )
+    .unwrap();
+    writeln!(
+        file2,
+        r#"[{{"id": 1, "v": "first"}}, {{"id": 2, "v": "x"}}]"#
+    )
+    .unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--set-key", "id", "--no-color"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_set_key_duplicates_strict() {
+    // Strict mode: error on duplicate keys
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(
+        file1,
+        r#"[{{"id": 1, "v": "first"}}, {{"id": 1, "v": "second"}}]"#
+    )
+    .unwrap();
+    writeln!(
+        file2,
+        r#"[{{"id": 1, "v": "first"}}]"#
+    )
+    .unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args([
+            "--set-key",
+            "id",
+            "--set-key-allow-duplicates=false",
+            "--no-color",
+        ])
+        .assert()
+        .failure()
+        .code(5)
+        .stderr(predicate::str::contains("duplicate key"));
+}
+
+#[test]
+fn test_set_key_json_output() {
+    // JSON output format should include key-match paths
+    jsondiff()
+        .args([
+            "tests/fixtures/set_key_users_old.json",
+            "tests/fixtures/set_key_users_new.json",
+        ])
+        .args(["--set-key", "users.id", "-f", "json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[id="));
+}
+
+#[test]
+fn test_set_key_nested_path() {
+    // Test deeply nested path matching
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(
+        file1,
+        r#"{{"data": {{"items": [{{"sku": "A1", "price": 10}}, {{"sku": "B2", "price": 20}}]}}}}"#
+    )
+    .unwrap();
+    writeln!(
+        file2,
+        r#"{{"data": {{"items": [{{"sku": "B2", "price": 25}}, {{"sku": "A1", "price": 10}}]}}}}"#
+    )
+    .unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--set-key", "data.items.sku", "--no-color"])
+        .assert()
+        .success()
+        // B2 price changed
+        .stdout(predicate::str::contains("[sku=B2]"))
+        .stdout(predicate::str::contains("price"))
+        // A1 unchanged, should not appear (only B2 changed)
+        .stdout(predicate::str::contains("[sku=A1]").not());
+}
+
+// ============================================================================
+// Set-Key Bug Regression Tests
+// ============================================================================
+
+#[test]
+fn test_set_key_duplicate_error_detected() {
+    // Duplicate keys in the array should produce an error when allow_duplicates=false.
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(
+        file1,
+        r#"["not_an_object", {{"id": 1, "v": "first"}}, {{"id": 1, "v": "dup"}}]"#
+    )
+    .unwrap();
+    writeln!(file2, r#"[{{"id": 1, "v": "first"}}]"#).unwrap();
+
+    let output = jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args([
+            "--set-key",
+            "id",
+            "--set-key-allow-duplicates=false",
+            "--no-color",
+        ])
+        .output()
+        .expect("failed to execute");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("duplicate"),
+        "Error should mention duplicate key, got: {}",
+        stderr
+    );
+    assert_eq!(output.status.code(), Some(5));
+}
+
+#[test]
+fn test_set_key_empty_key_field_rejected() {
+    // Bug: --set-key "" produces empty key field, which vacuously matches all objects.
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(file1, r#"[{{"id": 1}}]"#).unwrap();
+    writeln!(file2, r#"[{{"id": 1}}]"#).unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--set-key", "", "--no-color"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("empty"));
+}
+
+#[test]
+fn test_set_key_dot_only_rejected() {
+    // Bug: --set-key "." produces empty path and empty key.
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(file1, r#"[{{"id": 1}}]"#).unwrap();
+    writeln!(file2, r#"[{{"id": 1}}]"#).unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--set-key", ".", "--no-color"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("empty"));
+}
+
+#[test]
+fn test_set_key_duplicate_key_args_deduped() {
+    // Bug: --set-key users.id --set-key users.id creates composite key ["id","id"]
+    // which would fail to match since objects don't have two "id" fields.
+    // Should be deduplicated to ["id"].
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(
+        file1,
+        r#"{{"users": [{{"id": 1, "v": "a"}}, {{"id": 2, "v": "b"}}]}}"#
+    )
+    .unwrap();
+    writeln!(
+        file2,
+        r#"{{"users": [{{"id": 2, "v": "b"}}, {{"id": 1, "v": "a"}}]}}"#
+    )
+    .unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--set-key", "users.id", "--set-key", "users.id", "--no-color"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No differences found"));
+}
+
+#[test]
+fn test_set_key_empty_arrays() {
+    // Edge case: both arrays empty with set-key should show no differences
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(file1, r#"{{"items": []}}"#).unwrap();
+    writeln!(file2, r#"{{"items": []}}"#).unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--set-key", "items.id", "--no-color"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No differences found"));
+}
+
+#[test]
+fn test_set_key_non_object_elements() {
+    // Edge case: array with mix of objects and primitives
+    // Primitives can't have keys, should be treated as unkeyed (lenient)
+    let mut file1 = NamedTempFile::new().unwrap();
+    let mut file2 = NamedTempFile::new().unwrap();
+
+    writeln!(
+        file1,
+        r#"[{{"id": 1, "v": "a"}}, 42, "hello", {{"id": 2, "v": "b"}}]"#
+    )
+    .unwrap();
+    writeln!(
+        file2,
+        r#"[{{"id": 2, "v": "b"}}, 42, "hello", {{"id": 1, "v": "a"}}]"#
+    )
+    .unwrap();
+
+    jsondiff()
+        .args([
+            file1.path().to_str().unwrap(),
+            file2.path().to_str().unwrap(),
+        ])
+        .args(["--set-key", "id", "--no-color"])
+        .assert()
+        .success()
+        // Objects matched by key, primitives matched by set — no differences
+        .stdout(predicate::str::contains("No differences found"));
+}
+
+// ============================================================================
+// Object Comparison Mode Tests
+// ============================================================================
+
 #[test]
 fn test_ordered_objects_flag() {
     // Test that --ordered-objects / -o flag works

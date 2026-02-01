@@ -1,6 +1,7 @@
 use super::engine::diff_values;
 use super::object::values_equal;
-use super::types::{DiffConfig, DiffOp, JsonPath};
+use super::types::{DiffConfig, DiffOp, JsonPath, SetKeyConfig};
+use crate::error::JsonDiffError;
 use imara_diff::{Algorithm, Diff, InternedInput};
 use sonic_rs::{JsonContainerTrait, JsonValueTrait, Value};
 use std::collections::hash_map::DefaultHasher;
@@ -11,44 +12,48 @@ use std::hash::{Hash, Hasher};
 /// Below this size, linear search is faster due to cache locality.
 const HASHMAP_THRESHOLD: usize = 20;
 
+/// Threshold for using HashSet in set-key duplicate detection.
+/// Aligned with HASHMAP_THRESHOLD used by set/multiset modes.
+const SET_KEY_HASHMAP_THRESHOLD: usize = HASHMAP_THRESHOLD;
+
 /// Compare arrays preserving order using a simple LCS-based approach
 pub fn diff_arrays_ordered(
     left: &[Value],
     right: &[Value],
     path: &JsonPath,
     config: &DiffConfig,
-) -> Vec<DiffOp> {
+) -> Result<Vec<DiffOp>, JsonDiffError> {
     // =========================================================================
     // Phase 1: Early termination paths
     // =========================================================================
 
     // Fast path: both arrays empty
     if left.is_empty() && right.is_empty() {
-        return vec![];
+        return Ok(vec![]);
     }
 
     // Fast path: left array empty - all elements are additions
     if left.is_empty() {
-        return right
+        return Ok(right
             .iter()
             .enumerate()
             .map(|(i, val)| DiffOp::Added {
                 path: path.append_index(i),
                 value: val.clone(),
             })
-            .collect();
+            .collect());
     }
 
     // Fast path: right array empty - all elements are removals
     if right.is_empty() {
-        return left
+        return Ok(left
             .iter()
             .enumerate()
             .map(|(i, val)| DiffOp::Removed {
                 path: path.append_index(i),
                 value: val.clone(),
             })
-            .collect();
+            .collect());
     }
 
     // =========================================================================
@@ -67,9 +72,9 @@ pub fn diff_arrays_ordered(
         let mut ops = Vec::new();
         for i in 0..left.len() {
             let child_path = path.append_index(i);
-            ops.extend(diff_values(&left[i], &right[i], &child_path, config));
+            ops.extend(diff_values(&left[i], &right[i], &child_path, config)?);
         }
-        return ops;
+        return Ok(ops);
     }
 
     // Get the middle portion that needs diff
@@ -83,7 +88,7 @@ pub fn diff_arrays_ordered(
     // Process prefix: check for deep differences
     for i in 0..prefix_len {
         let child_path = path.append_index(i);
-        ops.extend(diff_values(&left[i], &right[i], &child_path, config));
+        ops.extend(diff_values(&left[i], &right[i], &child_path, config)?);
     }
 
     // Process the middle portion with diff algorithm
@@ -123,7 +128,7 @@ pub fn diff_arrays_ordered(
                     &right[actual_right_idx],
                     &child_path,
                     config,
-                ));
+                )?);
                 left_pos += 1;
                 right_pos += 1;
             }
@@ -194,7 +199,7 @@ pub fn diff_arrays_ordered(
                 &right[actual_right_idx],
                 &child_path,
                 config,
-            ));
+            )?);
             left_pos += 1;
             right_pos += 1;
         }
@@ -205,10 +210,10 @@ pub fn diff_arrays_ordered(
         let left_idx = left.len() - suffix_len + i;
         let right_idx = right.len() - suffix_len + i;
         let child_path = path.append_index(right_idx);
-        ops.extend(diff_values(&left[left_idx], &right[right_idx], &child_path, config));
+        ops.extend(diff_values(&left[left_idx], &right[right_idx], &child_path, config)?);
     }
 
-    ops
+    Ok(ops)
 }
 
 /// Compare arrays as sets (order ignored, duplicates ignored)
@@ -414,6 +419,253 @@ fn diff_arrays_as_multiset_linear(
                     value: val.clone(),
                 });
             }
+        }
+    }
+
+    ops
+}
+
+// ============================================================================
+// Set-key based array comparison
+// ============================================================================
+
+/// Compare arrays by matching objects on key fields instead of position.
+/// Elements with matching keys are recursively compared; unmatched elements
+/// are reported as added/removed. Elements missing key fields fall back
+/// to set comparison (lenient) or error (strict).
+pub fn diff_arrays_with_set_key(
+    left: &[Value],
+    right: &[Value],
+    path: &JsonPath,
+    config: &DiffConfig,
+    key_fields: &[String],
+    set_key_config: &SetKeyConfig,
+) -> Result<Vec<DiffOp>, JsonDiffError> {
+    let mut ops = Vec::new();
+
+    // Partition elements into keyed (have all key fields) and unkeyed.
+    let mut left_keyed: Vec<(Vec<(String, String)>, &Value)> = Vec::new();
+    let mut left_unkeyed: Vec<&Value> = Vec::new();
+
+    for (i, val) in left.iter().enumerate() {
+        match extract_set_key(val, key_fields) {
+            Some(key) => left_keyed.push((key, val)),
+            None => {
+                if !set_key_config.allow_missing {
+                    let missing_field = find_first_missing_field(val, key_fields);
+                    return Err(JsonDiffError::SetKeyMissing {
+                        path: format!("{}[{}]", path, i),
+                        field: missing_field,
+                    });
+                }
+                left_unkeyed.push(val);
+            }
+        }
+    }
+
+    let mut right_keyed: Vec<(Vec<(String, String)>, &Value)> = Vec::new();
+    let mut right_unkeyed: Vec<&Value> = Vec::new();
+
+    for (i, val) in right.iter().enumerate() {
+        match extract_set_key(val, key_fields) {
+            Some(key) => right_keyed.push((key, val)),
+            None => {
+                if !set_key_config.allow_missing {
+                    let missing_field = find_first_missing_field(val, key_fields);
+                    return Err(JsonDiffError::SetKeyMissing {
+                        path: format!("{}[{}]", path, i),
+                        field: missing_field,
+                    });
+                }
+                right_unkeyed.push(val);
+            }
+        }
+    }
+
+    // Build key→value maps (first-match-wins for duplicates).
+    // Use linear scan for small arrays (cache-friendly), HashSet for large ones.
+    let use_hashset = left_keyed.len() >= SET_KEY_HASHMAP_THRESHOLD
+        || right_keyed.len() >= SET_KEY_HASHMAP_THRESHOLD;
+
+    let mut left_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
+    let mut right_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
+
+    if use_hashset {
+        let mut left_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (key, val) in &left_keyed {
+            let key_str = set_key_to_string(key);
+            if !left_seen.insert(key_str.clone()) {
+                if !set_key_config.allow_duplicates {
+                    return Err(JsonDiffError::SetKeyDuplicate {
+                        key: key_str.clone(),
+                        path1: format!("{}", path),
+                        path2: format!("{}", path),
+                    });
+                }
+                continue;
+            }
+            left_map.push((key_str, key.clone(), val));
+        }
+
+        let mut right_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (key, val) in &right_keyed {
+            let key_str = set_key_to_string(key);
+            if !right_seen.insert(key_str.clone()) {
+                if !set_key_config.allow_duplicates {
+                    return Err(JsonDiffError::SetKeyDuplicate {
+                        key: key_str.clone(),
+                        path1: format!("{}", path),
+                        path2: format!("{}", path),
+                    });
+                }
+                continue;
+            }
+            right_map.push((key_str, key.clone(), val));
+        }
+    } else {
+        for (key, val) in &left_keyed {
+            let key_str = set_key_to_string(key);
+            if left_map.iter().any(|(k, _, _)| *k == key_str) {
+                if !set_key_config.allow_duplicates {
+                    return Err(JsonDiffError::SetKeyDuplicate {
+                        key: key_str.clone(),
+                        path1: format!("{}", path),
+                        path2: format!("{}", path),
+                    });
+                }
+                continue;
+            }
+            left_map.push((key_str, key.clone(), val));
+        }
+
+        for (key, val) in &right_keyed {
+            let key_str = set_key_to_string(key);
+            if right_map.iter().any(|(k, _, _)| *k == key_str) {
+                if !set_key_config.allow_duplicates {
+                    return Err(JsonDiffError::SetKeyDuplicate {
+                        key: key_str.clone(),
+                        path1: format!("{}", path),
+                        path2: format!("{}", path),
+                    });
+                }
+                continue;
+            }
+            right_map.push((key_str, key.clone(), val));
+        }
+    }
+
+    // Find matched pairs and compare recursively (left order for determinism)
+    for (key_str, key_parts, left_val) in &left_map {
+        if let Some((_, _, right_val)) = right_map.iter().find(|(k, _, _)| k == key_str) {
+            let child_path = path.append_key_match(key_parts.clone());
+            ops.extend(diff_values(left_val, right_val, &child_path, config)?);
+        } else {
+            // Only in left → removed
+            ops.push(DiffOp::Removed {
+                path: path.append_key_match(key_parts.clone()),
+                value: (*left_val).clone(),
+            });
+        }
+    }
+
+    // Find elements only in right → added (right order for determinism)
+    for (key_str, key_parts, right_val) in &right_map {
+        if !left_map.iter().any(|(k, _, _)| k == key_str) {
+            ops.push(DiffOp::Added {
+                path: path.append_key_match(key_parts.clone()),
+                value: (*right_val).clone(),
+            });
+        }
+    }
+
+    // Handle unkeyed elements via set comparison with [{}] marker
+    if !left_unkeyed.is_empty() || !right_unkeyed.is_empty() {
+        let set_ops = diff_unkeyed_as_set(&left_unkeyed, &right_unkeyed, path);
+        ops.extend(set_ops);
+    }
+
+    Ok(ops)
+}
+
+/// Extract key field values from a JSON value. Returns None if the value
+/// is not an object or is missing any of the required key fields.
+fn extract_set_key(value: &Value, key_fields: &[String]) -> Option<Vec<(String, String)>> {
+    if !value.is_object() {
+        return None;
+    }
+    let obj = value.as_object().unwrap();
+    let mut key_parts = Vec::with_capacity(key_fields.len());
+    for field in key_fields {
+        match obj.get(&field.to_string()) {
+            Some(v) => {
+                let key_str = value_to_key_string(v);
+                key_parts.push((field.clone(), key_str));
+            }
+            None => return None,
+        }
+    }
+    Some(key_parts)
+}
+
+/// Convert a JSON value to its string representation for use as a key.
+fn value_to_key_string(value: &Value) -> String {
+    if value.is_null() {
+        "null".to_string()
+    } else if value.is_boolean() {
+        value.as_bool().unwrap().to_string()
+    } else if value.is_number() {
+        format!("{}", value)
+    } else if value.is_str() {
+        value.as_str().unwrap().to_string()
+    } else {
+        format!("{}", value)
+    }
+}
+
+/// Convert a set key (list of field/value pairs) to a single lookup string.
+fn set_key_to_string(key: &[(String, String)]) -> String {
+    key.iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// Find the first missing key field in a value (for error messages).
+fn find_first_missing_field(value: &Value, key_fields: &[String]) -> String {
+    if !value.is_object() {
+        return key_fields.first().cloned().unwrap_or_default();
+    }
+    let obj = value.as_object().unwrap();
+    for field in key_fields {
+        if obj.get(&field.to_string()).is_none() {
+            return field.clone();
+        }
+    }
+    key_fields.first().cloned().unwrap_or_default()
+}
+
+/// Compare unkeyed elements as a set (for fallback in lenient mode).
+/// Uses the [{}] set marker in paths.
+fn diff_unkeyed_as_set(left: &[&Value], right: &[&Value], path: &JsonPath) -> Vec<DiffOp> {
+    let mut ops = Vec::new();
+
+    // Find elements only in left (removed)
+    for val in left {
+        if !right.iter().any(|r| values_equal(val, r)) {
+            ops.push(DiffOp::Removed {
+                path: path.append_set_marker(),
+                value: (*val).clone(),
+            });
+        }
+    }
+
+    // Find elements only in right (added)
+    for val in right {
+        if !left.iter().any(|l| values_equal(val, l)) {
+            ops.push(DiffOp::Added {
+                path: path.append_set_marker(),
+                value: (*val).clone(),
+            });
         }
     }
 

@@ -1,0 +1,23 @@
+---
+source: tests/snapshots.rs
+assertion_line: 162
+expression: output
+---
+$[id=1].value
+- "alpha"
++ "ALPHA"
+
+$[id=2]
+- {
+-     "id": 2,
+-     "value": "beta"
+-   }
+
+$[id=4]
++ {
++     "id": 4,
++     "value": "delta"
++   }
+
+----------------------------------------
+1 added, 1 removed, 1 modified

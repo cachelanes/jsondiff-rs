@@ -59,7 +59,7 @@ fn arb_simple_json_array() -> impl Strategy<Value = Value> {
 
 fn diff_with_config(left: &Value, right: &Value, config: DiffConfig) -> Vec<DiffOp> {
     let engine = DiffEngine::new(config);
-    engine.diff(left, right).operations
+    engine.diff(left, right).unwrap().operations
 }
 
 fn diff_default(left: &Value, right: &Value) -> Vec<DiffOp> {
