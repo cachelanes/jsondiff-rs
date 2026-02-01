@@ -3,20 +3,21 @@ use super::object::values_equal;
 use super::types::{DiffConfig, DiffOp, JsonPath, SetKeyConfig};
 use crate::error::JsonDiffError;
 use imara_diff::{Algorithm, Diff, InternedInput};
-use sonic_rs::{JsonContainerTrait, JsonValueTrait, Value};
+use sonic_rs::{JsonContainerTrait as _, JsonValueTrait as _, Value};
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash as _, Hasher};
 
-/// Threshold for using HashMap vs linear search for set/multiset operations.
+/// Threshold for using `HashMap` vs linear search for set/multiset operations.
 /// Below this size, linear search is faster due to cache locality.
 const HASHMAP_THRESHOLD: usize = 20;
 
-/// Threshold for using HashSet in set-key duplicate detection.
-/// Aligned with HASHMAP_THRESHOLD used by set/multiset modes.
+/// Threshold for using `HashSet` in set-key duplicate detection.
+/// Aligned with `HASHMAP_THRESHOLD` used by set/multiset modes.
 const SET_KEY_HASHMAP_THRESHOLD: usize = HASHMAP_THRESHOLD;
 
 /// Compare arrays preserving order using a simple LCS-based approach
+#[expect(clippy::too_many_lines, reason = "phased diff algorithm is clearer as a single function")]
 pub fn diff_arrays_ordered(
     left: &[Value],
     right: &[Value],
@@ -210,7 +211,12 @@ pub fn diff_arrays_ordered(
         let left_idx = left.len() - suffix_len + i;
         let right_idx = right.len() - suffix_len + i;
         let child_path = path.append_index(right_idx);
-        ops.extend(diff_values(&left[left_idx], &right[right_idx], &child_path, config)?);
+        ops.extend(diff_values(
+            &left[left_idx],
+            &right[right_idx],
+            &child_path,
+            config,
+        )?);
     }
 
     Ok(ops)
@@ -239,7 +245,9 @@ pub fn diff_arrays_as_set(
     for val in left {
         let hash = compute_value_hash(val);
         // Only process first occurrence of each unique value
-        if is_first_occurrence_in_map(&left_map, hash, val) && !set_contains(&right_map, hash, val) {
+        if is_first_occurrence_in_map(&left_map, hash, val)
+            && !set_contains(&right_map, hash, val)
+        {
             ops.push(DiffOp::Removed {
                 path: path.append_set_marker(),
                 value: val.clone(),
@@ -251,7 +259,9 @@ pub fn diff_arrays_as_set(
     for val in right {
         let hash = compute_value_hash(val);
         // Only process first occurrence of each unique value
-        if is_first_occurrence_in_map(&right_map, hash, val) && !set_contains(&left_map, hash, val) {
+        if is_first_occurrence_in_map(&right_map, hash, val)
+            && !set_contains(&left_map, hash, val)
+        {
             ops.push(DiffOp::Added {
                 path: path.append_set_marker(),
                 value: val.clone(),
@@ -324,11 +334,13 @@ pub fn diff_arrays_as_multiset(
 
     // Process left values in input order for determinism
     // Use HashSet for O(1) lookup of processed hashes
-    let mut processed: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let mut processed: HashSet<u64> = HashSet::new();
     for val in left {
         let hash = compute_value_hash(val);
         // Only process first occurrence of each unique value
-        if !processed.contains(&hash) && is_first_occurrence_in_count_map(&left_counts, hash, val) {
+        if !processed.contains(&hash)
+            && is_first_occurrence_in_count_map(&left_counts, hash, val)
+        {
             let left_count = get_count(&left_counts, hash, val);
             let right_count = get_count(&right_counts, hash, val);
 
@@ -348,7 +360,8 @@ pub fn diff_arrays_as_multiset(
     processed.clear();
     for val in right {
         let hash = compute_value_hash(val);
-        if !processed.contains(&hash) && is_first_occurrence_in_count_map(&right_counts, hash, val)
+        if !processed.contains(&hash)
+            && is_first_occurrence_in_count_map(&right_counts, hash, val)
         {
             let left_count = get_count(&left_counts, hash, val);
             let right_count = get_count(&right_counts, hash, val);
@@ -430,9 +443,11 @@ fn diff_arrays_as_multiset_linear(
 // ============================================================================
 
 /// Compare arrays by matching objects on key fields instead of position.
+///
 /// Elements with matching keys are recursively compared; unmatched elements
 /// are reported as added/removed. Elements missing key fields fall back
 /// to set comparison (lenient) or error (strict).
+#[expect(clippy::too_many_lines, reason = "set-key logic with keyed/unkeyed partitioning is clearer inline")]
 pub fn diff_arrays_with_set_key(
     left: &[Value],
     right: &[Value],
@@ -441,6 +456,8 @@ pub fn diff_arrays_with_set_key(
     key_fields: &[String],
     set_key_config: &SetKeyConfig,
 ) -> Result<Vec<DiffOp>, JsonDiffError> {
+    type KeyedEntry<'a> = (String, Vec<(String, String)>, &'a Value);
+
     let mut ops = Vec::new();
 
     // Partition elements into keyed (have all key fields) and unkeyed.
@@ -448,18 +465,15 @@ pub fn diff_arrays_with_set_key(
     let mut left_unkeyed: Vec<&Value> = Vec::new();
 
     for (i, val) in left.iter().enumerate() {
-        match extract_set_key(val, key_fields) {
-            Some(key) => left_keyed.push((key, val)),
-            None => {
-                if !set_key_config.allow_missing {
-                    let missing_field = find_first_missing_field(val, key_fields);
-                    return Err(JsonDiffError::SetKeyMissing {
-                        path: format!("{}[{}]", path, i),
-                        field: missing_field,
-                    });
-                }
-                left_unkeyed.push(val);
+        if let Some(key) = extract_set_key(val, key_fields) { left_keyed.push((key, val)) } else {
+            if !set_key_config.allow_missing {
+                let missing_field = find_first_missing_field(val, key_fields);
+                return Err(JsonDiffError::SetKeyMissing {
+                    path: format!("{path}[{i}]"),
+                    field: missing_field,
+                });
             }
+            left_unkeyed.push(val);
         }
     }
 
@@ -467,39 +481,36 @@ pub fn diff_arrays_with_set_key(
     let mut right_unkeyed: Vec<&Value> = Vec::new();
 
     for (i, val) in right.iter().enumerate() {
-        match extract_set_key(val, key_fields) {
-            Some(key) => right_keyed.push((key, val)),
-            None => {
-                if !set_key_config.allow_missing {
-                    let missing_field = find_first_missing_field(val, key_fields);
-                    return Err(JsonDiffError::SetKeyMissing {
-                        path: format!("{}[{}]", path, i),
-                        field: missing_field,
-                    });
-                }
-                right_unkeyed.push(val);
+        if let Some(key) = extract_set_key(val, key_fields) { right_keyed.push((key, val)) } else {
+            if !set_key_config.allow_missing {
+                let missing_field = find_first_missing_field(val, key_fields);
+                return Err(JsonDiffError::SetKeyMissing {
+                    path: format!("{path}[{i}]"),
+                    field: missing_field,
+                });
             }
+            right_unkeyed.push(val);
         }
     }
 
-    // Build key→value maps (first-match-wins for duplicates).
+    // Build key->value maps (first-match-wins for duplicates).
     // Use linear scan for small arrays (cache-friendly), HashSet for large ones.
     let use_hashset = left_keyed.len() >= SET_KEY_HASHMAP_THRESHOLD
         || right_keyed.len() >= SET_KEY_HASHMAP_THRESHOLD;
 
-    let mut left_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
-    let mut right_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
+    let mut left_map: Vec<KeyedEntry<'_>> = Vec::new();
+    let mut right_map: Vec<KeyedEntry<'_>> = Vec::new();
 
     if use_hashset {
-        let mut left_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut left_seen: HashSet<String> = HashSet::new();
         for (key, val) in &left_keyed {
             let key_str = set_key_to_string(key);
             if !left_seen.insert(key_str.clone()) {
                 if !set_key_config.allow_duplicates {
                     return Err(JsonDiffError::SetKeyDuplicate {
-                        key: key_str.clone(),
-                        path1: format!("{}", path),
-                        path2: format!("{}", path),
+                        key: key_str,
+                        path1: format!("{path}"),
+                        path2: format!("{path}"),
                     });
                 }
                 continue;
@@ -507,15 +518,15 @@ pub fn diff_arrays_with_set_key(
             left_map.push((key_str, key.clone(), val));
         }
 
-        let mut right_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut right_seen: HashSet<String> = HashSet::new();
         for (key, val) in &right_keyed {
             let key_str = set_key_to_string(key);
             if !right_seen.insert(key_str.clone()) {
                 if !set_key_config.allow_duplicates {
                     return Err(JsonDiffError::SetKeyDuplicate {
-                        key: key_str.clone(),
-                        path1: format!("{}", path),
-                        path2: format!("{}", path),
+                        key: key_str,
+                        path1: format!("{path}"),
+                        path2: format!("{path}"),
                     });
                 }
                 continue;
@@ -528,9 +539,9 @@ pub fn diff_arrays_with_set_key(
             if left_map.iter().any(|(k, _, _)| *k == key_str) {
                 if !set_key_config.allow_duplicates {
                     return Err(JsonDiffError::SetKeyDuplicate {
-                        key: key_str.clone(),
-                        path1: format!("{}", path),
-                        path2: format!("{}", path),
+                        key: key_str,
+                        path1: format!("{path}"),
+                        path2: format!("{path}"),
                     });
                 }
                 continue;
@@ -543,9 +554,9 @@ pub fn diff_arrays_with_set_key(
             if right_map.iter().any(|(k, _, _)| *k == key_str) {
                 if !set_key_config.allow_duplicates {
                     return Err(JsonDiffError::SetKeyDuplicate {
-                        key: key_str.clone(),
-                        path1: format!("{}", path),
-                        path2: format!("{}", path),
+                        key: key_str,
+                        path1: format!("{path}"),
+                        path2: format!("{path}"),
                     });
                 }
                 continue;
@@ -560,7 +571,7 @@ pub fn diff_arrays_with_set_key(
             let child_path = path.append_key_match(key_parts.clone());
             ops.extend(diff_values(left_val, right_val, &child_path, config)?);
         } else {
-            // Only in left → removed
+            // Only in left -> removed
             ops.push(DiffOp::Removed {
                 path: path.append_key_match(key_parts.clone()),
                 value: (*left_val).clone(),
@@ -568,7 +579,7 @@ pub fn diff_arrays_with_set_key(
         }
     }
 
-    // Find elements only in right → added (right order for determinism)
+    // Find elements only in right -> added (right order for determinism)
     for (key_str, key_parts, right_val) in &right_map {
         if !left_map.iter().any(|(k, _, _)| k == key_str) {
             ops.push(DiffOp::Added {
@@ -590,13 +601,10 @@ pub fn diff_arrays_with_set_key(
 /// Extract key field values from a JSON value. Returns None if the value
 /// is not an object or is missing any of the required key fields.
 fn extract_set_key(value: &Value, key_fields: &[String]) -> Option<Vec<(String, String)>> {
-    if !value.is_object() {
-        return None;
-    }
-    let obj = value.as_object().unwrap();
+    let obj = value.as_object()?;
     let mut key_parts = Vec::with_capacity(key_fields.len());
     for field in key_fields {
-        match obj.get(&field.to_string()) {
+        match obj.get(&field.clone()) {
             Some(v) => {
                 let key_str = value_to_key_string(v);
                 key_parts.push((field.clone(), key_str));
@@ -611,33 +619,32 @@ fn extract_set_key(value: &Value, key_fields: &[String]) -> Option<Vec<(String, 
 fn value_to_key_string(value: &Value) -> String {
     if value.is_null() {
         "null".to_string()
-    } else if value.is_boolean() {
-        value.as_bool().unwrap().to_string()
+    } else if let Some(b) = value.as_bool() {
+        b.to_string()
     } else if value.is_number() {
-        format!("{}", value)
-    } else if value.is_str() {
-        value.as_str().unwrap().to_string()
+        format!("{value}")
+    } else if let Some(s) = value.as_str() {
+        s.to_string()
     } else {
-        format!("{}", value)
+        format!("{value}")
     }
 }
 
 /// Convert a set key (list of field/value pairs) to a single lookup string.
 fn set_key_to_string(key: &[(String, String)]) -> String {
     key.iter()
-        .map(|(k, v)| format!("{}={}", k, v))
+        .map(|(k, v)| format!("{k}={v}"))
         .collect::<Vec<_>>()
         .join(",")
 }
 
 /// Find the first missing key field in a value (for error messages).
 fn find_first_missing_field(value: &Value, key_fields: &[String]) -> String {
-    if !value.is_object() {
+    let Some(obj) = value.as_object() else {
         return key_fields.first().cloned().unwrap_or_default();
-    }
-    let obj = value.as_object().unwrap();
+    };
     for field in key_fields {
-        if obj.get(&field.to_string()).is_none() {
+        if obj.get(&field.clone()).is_none() {
             return field.clone();
         }
     }
@@ -696,8 +703,9 @@ fn compute_value_hash(value: &Value) -> u64 {
     hasher.finish()
 }
 
-/// Build a hash map for set operations (deduplicates values)
-/// Returns: hash -> Vec<&Value> (multiple values possible due to collisions)
+/// Build a hash map for set operations (deduplicates values).
+///
+/// Returns: hash -> `Vec<&Value>` (multiple values possible due to collisions)
 fn build_value_set(values: &[Value]) -> HashMap<u64, Vec<&Value>> {
     let mut map: HashMap<u64, Vec<&Value>> = HashMap::new();
 
@@ -715,25 +723,20 @@ fn build_value_set(values: &[Value]) -> HashMap<u64, Vec<&Value>> {
 
 /// Check if a value exists in the set (handles hash collisions)
 fn set_contains(map: &HashMap<u64, Vec<&Value>>, hash: u64, value: &Value) -> bool {
-    match map.get(&hash) {
-        Some(vals) => vals.iter().any(|v| values_equal(v, value)),
-        None => false,
-    }
+    map.get(&hash)
+        .is_some_and(|vals| vals.iter().any(|v| values_equal(v, value)))
 }
 
 /// Check if this is the first occurrence of the value in the map
 fn is_first_occurrence_in_map(map: &HashMap<u64, Vec<&Value>>, hash: u64, value: &Value) -> bool {
-    match map.get(&hash) {
-        Some(vals) => {
-            // Find the first value that equals this one
-            vals.first().map(|v| values_equal(v, value)).unwrap_or(false)
-        }
-        None => false,
-    }
+    map.get(&hash)
+        .and_then(|vals| vals.first())
+        .is_some_and(|v| values_equal(v, value))
 }
 
-/// Count occurrences using hash-based approach
-/// Returns: hash -> Vec<(&Value, count)>
+/// Count occurrences using hash-based approach.
+///
+/// Returns: hash -> `Vec<(&Value, count)>`
 fn count_values_hashmap(values: &[Value]) -> HashMap<u64, Vec<(&Value, usize)>> {
     let mut map: HashMap<u64, Vec<(&Value, usize)>> = HashMap::new();
 
@@ -754,14 +757,9 @@ fn count_values_hashmap(values: &[Value]) -> HashMap<u64, Vec<(&Value, usize)>> 
 
 /// Get count of a value from the count map
 fn get_count(map: &HashMap<u64, Vec<(&Value, usize)>>, hash: u64, value: &Value) -> usize {
-    match map.get(&hash) {
-        Some(entries) => entries
-            .iter()
-            .find(|(v, _)| values_equal(v, value))
-            .map(|(_, c)| *c)
-            .unwrap_or(0),
-        None => 0,
-    }
+    map.get(&hash)
+        .and_then(|entries| entries.iter().find(|(v, _)| values_equal(v, value)))
+        .map_or(0, |(_, c)| *c)
 }
 
 /// Check if this is the first occurrence in the count map
@@ -770,13 +768,9 @@ fn is_first_occurrence_in_count_map(
     hash: u64,
     value: &Value,
 ) -> bool {
-    match map.get(&hash) {
-        Some(entries) => entries
-            .first()
-            .map(|(v, _)| values_equal(v, value))
-            .unwrap_or(false),
-        None => false,
-    }
+    map.get(&hash)
+        .and_then(|entries| entries.first())
+        .is_some_and(|(v, _)| values_equal(v, value))
 }
 
 // Note: ValueWrapper and PrehashedWrapper removed as ordered mode now uses
@@ -784,18 +778,18 @@ fn is_first_occurrence_in_count_map(
 
 fn hash_value<H: Hasher>(value: &Value, state: &mut H) {
     if value.is_null() {
-        0u8.hash(state);
+        0_u8.hash(state);
     } else if value.is_boolean() {
-        1u8.hash(state);
+        1_u8.hash(state);
         value.as_bool().unwrap_or(false).hash(state);
     } else if value.is_number() {
-        2u8.hash(state);
-        format!("{}", value).hash(state);
+        2_u8.hash(state);
+        format!("{value}").hash(state);
     } else if value.is_str() {
-        3u8.hash(state);
+        3_u8.hash(state);
         value.as_str().unwrap_or("").hash(state);
     } else if value.is_array() {
-        4u8.hash(state);
+        4_u8.hash(state);
         if let Some(arr) = value.as_array() {
             arr.len().hash(state);
             for v in arr {
@@ -803,11 +797,11 @@ fn hash_value<H: Hasher>(value: &Value, state: &mut H) {
             }
         }
     } else if value.is_object() {
-        5u8.hash(state);
+        5_u8.hash(state);
         if let Some(obj) = value.as_object() {
             // Sort keys for consistent hash
             let mut keys: Vec<&str> = obj.iter().map(|(k, _)| k).collect();
-            keys.sort();
+            keys.sort_unstable();
             for k in keys {
                 k.hash(state);
                 if let Some(v) = obj.get(&k.to_string()) {
@@ -817,7 +811,6 @@ fn hash_value<H: Hasher>(value: &Value, state: &mut H) {
         }
     }
 }
-
 
 // ============================================================================
 // Helper functions for prefix/suffix matching (Phase 2)
@@ -832,8 +825,8 @@ fn find_common_prefix(left: &[Value], right: &[Value]) -> usize {
         .count()
 }
 
-/// Find the length of the common suffix (identical trailing elements)
-/// The suffix must not overlap with the prefix
+/// Find the length of the common suffix (identical trailing elements).
+/// The suffix must not overlap with the prefix.
 fn find_common_suffix(left: &[Value], right: &[Value], prefix_len: usize) -> usize {
     let left_remaining = left.len().saturating_sub(prefix_len);
     let right_remaining = right.len().saturating_sub(prefix_len);

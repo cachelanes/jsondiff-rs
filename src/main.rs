@@ -1,9 +1,8 @@
-use clap::Parser;
-use colored::Colorize;
+use clap::Parser as _;
+use colored::Colorize as _;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::io::{self, Write};
-use std::path::Path;
+use std::io::{self, Write as _};
 use std::process::ExitCode;
 
 mod cli;
@@ -24,8 +23,8 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("{} {}", "error:".red().bold(), e);
-            ExitCode::from(e.exit_code() as u8)
+            eprintln!("{} {e}", "error:".red().bold());
+            ExitCode::from(e.exit_code())
         }
     }
 }
@@ -76,22 +75,23 @@ fn run() -> Result<(), JsonDiffError> {
         }
         OutputFormat::Json => {
             let json_output = format_as_json(&result);
-            writeln!(stdout, "{}", json_output)?;
+            writeln!(stdout, "{json_output}")?;
         }
         OutputFormat::Summary => {
             let summary = format_as_summary(&result.stats);
-            writeln!(stdout, "{}", summary)?;
+            writeln!(stdout, "{summary}")?;
         }
     }
 
     Ok(())
 }
 
-/// Parse --set-key arguments into a SetKeyConfig.
+/// Parse --set-key arguments into a `SetKeyConfig`.
+///
 /// Each argument is "path.key" where the last dot-separated segment is the key field
 /// and everything before it is the array path.
-/// No dot means root array: "id" → path="" key="id"
-/// Same path prefixes are grouped: "users.id" + "users.type" → {"users" => ["id", "type"]}
+/// No dot means root array: `"id"` -> `path="" key="id"`.
+/// Same path prefixes are grouped: `"users.id" + "users.type"` -> `{"users" => ["id", "type"]}`.
 fn parse_set_key_args(
     set_keys: &[String],
     allow_missing: bool,
@@ -100,6 +100,8 @@ fn parse_set_key_args(
     let mut paths: HashMap<String, Vec<String>> = HashMap::new();
 
     for arg in set_keys {
+        // TODO: if we accumulate more of these expects, disable option_if_let_else in Cargo.toml
+        #[expect(clippy::option_if_let_else, reason = "match reads better than map_or_else here")]
         let (array_path, key_field) = match arg.rfind('.') {
             Some(pos) => (arg[..pos].to_string(), arg[pos + 1..].to_string()),
             None => (String::new(), arg.clone()),

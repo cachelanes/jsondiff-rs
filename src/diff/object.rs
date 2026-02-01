@@ -1,16 +1,17 @@
 use super::engine::diff_values;
 use super::types::{DiffConfig, DiffOp, JsonPath};
 use crate::error::JsonDiffError;
-use sonic_rs::{JsonContainerTrait, JsonValueTrait, Object, Value};
+use sonic_rs::{JsonContainerTrait as _, JsonValueTrait as _, Object, Value};
 use std::collections::HashSet;
 
-/// Threshold for using HashSet vs linear search for key membership checks.
+/// Threshold for using `HashSet` vs linear search for key membership checks.
 /// Below this size, linear search is faster due to cache locality and avoiding
-/// HashSet construction overhead. Value chosen based on typical stdlib thresholds.
+/// `HashSet` construction overhead. Value chosen based on typical stdlib thresholds.
 const HASHSET_THRESHOLD: usize = 20;
 
-/// Compare two JSON objects
-/// By default, objects are compared unordered (keys matched by name)
+/// Compare two JSON objects.
+///
+/// By default, objects are compared unordered (keys matched by name).
 /// Output order follows the input JSON structure (left file for removed/common keys,
 /// right file for added keys) for deterministic, intuitive results.
 pub fn diff_objects(
@@ -30,9 +31,13 @@ pub fn diff_objects(
         let right_keys: HashSet<&str> = right.iter().map(|(k, _)| k).collect();
 
         if config.ordered_objects {
-            diff_objects_ordered_hashset(left, right, path, config, &mut ops, &left_keys, &right_keys)?;
+            diff_objects_ordered_hashset(
+                left, right, path, config, &mut ops, &left_keys, &right_keys,
+            )?;
         } else {
-            diff_objects_unordered_hashset(left, right, path, config, &mut ops, &left_keys, &right_keys)?;
+            diff_objects_unordered_hashset(
+                left, right, path, config, &mut ops, &left_keys, &right_keys,
+            )?;
         }
     } else {
         // Linear search for small objects
@@ -55,7 +60,7 @@ fn diff_objects_unordered_linear(
     ops: &mut Vec<DiffOp>,
 ) -> Result<(), JsonDiffError> {
     // Process keys in left object order: removed keys and common keys
-    for (key, left_val) in left.iter() {
+    for (key, left_val) in left {
         let child_path = path.append_key(key);
         if let Some(right_val) = right.get(&key.to_string()) {
             // Common key - recurse to compare values
@@ -70,7 +75,7 @@ fn diff_objects_unordered_linear(
     }
 
     // Process keys only in right object (added) - in right's order
-    for (key, right_val) in right.iter() {
+    for (key, right_val) in right {
         if left.get(&key.to_string()).is_none() {
             let child_path = path.append_key(key);
             ops.push(DiffOp::Added {
@@ -83,7 +88,7 @@ fn diff_objects_unordered_linear(
     Ok(())
 }
 
-/// Unordered comparison for larger objects using HashSet for O(1) lookups
+/// Unordered comparison for larger objects using `HashSet` for O(1) lookups
 fn diff_objects_unordered_hashset(
     left: &Object,
     right: &Object,
@@ -94,11 +99,13 @@ fn diff_objects_unordered_hashset(
     right_keys: &HashSet<&str>,
 ) -> Result<(), JsonDiffError> {
     // Process keys in left object order: removed keys and common keys
-    for (key, left_val) in left.iter() {
+    for (key, left_val) in left {
         let child_path = path.append_key(key);
         if right_keys.contains(key) {
             // Common key - recurse to compare values
-            let right_val = right.get(&key.to_string()).unwrap();
+            let right_val = right
+                .get(&key.to_string())
+                .expect("key should exist in right: HashSet membership was checked");
             ops.extend(diff_values(left_val, right_val, &child_path, config)?);
         } else {
             // Key only in left - removed
@@ -110,7 +117,7 @@ fn diff_objects_unordered_hashset(
     }
 
     // Process keys only in right object (added) - in right's order
-    for (key, right_val) in right.iter() {
+    for (key, right_val) in right {
         if !left_keys.contains(key) {
             let child_path = path.append_key(key);
             ops.push(DiffOp::Added {
@@ -135,14 +142,17 @@ fn diff_objects_ordered_linear(
     let right_order: Vec<&str> = right.iter().map(|(k, _)| k).collect();
 
     // Process keys in left object order
-    for (key, left_val) in left.iter() {
+    for (key, left_val) in left {
         let child_path = path.append_key(key);
         if let Some(right_val) = right.get(&key.to_string()) {
             // Common key - check position
             let left_pos = left_order.iter().position(|k| *k == key);
             let right_pos = right_order.iter().position(|k| *k == key);
 
-            if left_pos != right_pos {
+            if left_pos == right_pos {
+                // Same position - recurse
+                ops.extend(diff_values(left_val, right_val, &child_path, config)?);
+            } else {
                 // Key position changed - report as modified if values also differ
                 if !values_equal(left_val, right_val) {
                     ops.push(DiffOp::Modified {
@@ -151,9 +161,6 @@ fn diff_objects_ordered_linear(
                         new_value: right_val.clone(),
                     });
                 }
-            } else {
-                // Same position - recurse
-                ops.extend(diff_values(left_val, right_val, &child_path, config)?);
             }
         } else {
             // Key only in left - removed
@@ -165,7 +172,7 @@ fn diff_objects_ordered_linear(
     }
 
     // Process keys only in right object (added) - in right's order
-    for (key, right_val) in right.iter() {
+    for (key, right_val) in right {
         if left.get(&key.to_string()).is_none() {
             let child_path = path.append_key(key);
             ops.push(DiffOp::Added {
@@ -178,7 +185,7 @@ fn diff_objects_ordered_linear(
     Ok(())
 }
 
-/// Ordered comparison for larger objects using HashSet for O(1) lookups
+/// Ordered comparison for larger objects using `HashSet` for O(1) lookups
 fn diff_objects_ordered_hashset(
     left: &Object,
     right: &Object,
@@ -192,15 +199,20 @@ fn diff_objects_ordered_hashset(
     let right_order: Vec<&str> = right.iter().map(|(k, _)| k).collect();
 
     // Process keys in left object order
-    for (key, left_val) in left.iter() {
+    for (key, left_val) in left {
         let child_path = path.append_key(key);
         if right_keys.contains(key) {
             // Common key - check position
-            let right_val = right.get(&key.to_string()).unwrap();
+            let right_val = right
+                .get(&key.to_string())
+                .expect("key should exist in right: HashSet membership was checked");
             let left_pos = left_order.iter().position(|k| *k == key);
             let right_pos = right_order.iter().position(|k| *k == key);
 
-            if left_pos != right_pos {
+            if left_pos == right_pos {
+                // Same position - recurse
+                ops.extend(diff_values(left_val, right_val, &child_path, config)?);
+            } else {
                 // Key position changed - report as modified if values also differ
                 if !values_equal(left_val, right_val) {
                     ops.push(DiffOp::Modified {
@@ -209,9 +221,6 @@ fn diff_objects_ordered_hashset(
                         new_value: right_val.clone(),
                     });
                 }
-            } else {
-                // Same position - recurse
-                ops.extend(diff_values(left_val, right_val, &child_path, config)?);
             }
         } else {
             // Key only in left - removed
@@ -223,7 +232,7 @@ fn diff_objects_ordered_hashset(
     }
 
     // Process keys only in right object (added) - in right's order
-    for (key, right_val) in right.iter() {
+    for (key, right_val) in right {
         if !left_keys.contains(key) {
             let child_path = path.append_key(key);
             ops.push(DiffOp::Added {
@@ -246,22 +255,18 @@ pub fn values_equal(left: &Value, right: &Value) -> bool {
     }
     if left.is_number() && right.is_number() {
         // Compare numbers by their string representation to handle precision
-        return format!("{}", left) == format!("{}", right);
+        return format!("{left}") == format!("{right}");
     }
     if left.is_str() && right.is_str() {
         return left.as_str() == right.as_str();
     }
-    if left.is_array() && right.is_array() {
-        let l = left.as_array().unwrap();
-        let r = right.as_array().unwrap();
+    if let (Some(l), Some(r)) = (left.as_array(), right.as_array()) {
         if l.len() != r.len() {
             return false;
         }
         return l.iter().zip(r.iter()).all(|(a, b)| values_equal(a, b));
     }
-    if left.is_object() && right.is_object() {
-        let l = left.as_object().unwrap();
-        let r = right.as_object().unwrap();
+    if let (Some(l), Some(r)) = (left.as_object(), right.as_object()) {
         if l.len() != r.len() {
             return false;
         }

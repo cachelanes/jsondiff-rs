@@ -1,7 +1,13 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::integer_division,
+    reason = "test code: unwraps and integer math are fine"
+)]
+
 use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
 use predicates::prelude::*;
-use std::io::Write;
+use std::io::Write as _;
 use tempfile::NamedTempFile;
 
 fn jsondiff() -> Command {
@@ -206,7 +212,7 @@ fn test_stdin_input() {
 fn test_both_stdin_error() {
     jsondiff()
         .args(["-", "-"])
-        .write_stdin(r#"{}"#)
+        .write_stdin(r"{}")
         .assert()
         .failure()
         .stderr(predicate::str::contains("stdin"));
@@ -713,8 +719,7 @@ fn test_set_key_duplicate_error_detected() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("duplicate"),
-        "Error should mention duplicate key, got: {}",
-        stderr
+        "Error should mention duplicate key, got: {stderr}"
     );
     assert_eq!(output.status.code(), Some(5));
 }

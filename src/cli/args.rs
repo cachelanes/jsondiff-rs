@@ -10,6 +10,7 @@ use std::path::PathBuf;
                   human-readable, colorful diffs. Perfect for debugging \
                   API responses, configuration changes, and data pipelines."
 )]
+#[expect(clippy::struct_excessive_bools, reason = "CLI args naturally have many boolean flags")]
 pub struct Args {
     /// First JSON file to compare (use "-" for stdin)
     #[arg(value_name = "FILE1")]
@@ -59,7 +60,7 @@ pub struct Args {
     pub compact: bool,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug, Default, PartialEq)]
+#[derive(clap::ValueEnum, Clone, Debug, Default, PartialEq, Eq)]
 pub enum OutputFormat {
     #[default]
     Pretty,

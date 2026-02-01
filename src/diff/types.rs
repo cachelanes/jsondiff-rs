@@ -17,7 +17,7 @@ pub enum DiffOp {
     },
 }
 
-/// JSON path representation (e.g., "$.users[0].name")
+/// JSON path representation (e.g., `$.users[0].name`)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct JsonPath {
     segments: Vec<PathSegment>,
@@ -30,7 +30,7 @@ pub enum PathSegment {
     Index(usize),
     SetMarker,
     MultiSetMarker,
-    /// Key-based match for set-key mode, e.g. [id=1] or [name=foo,type=bar]
+    /// Key-based match for set-key mode, e.g. `[id=1]` or `[name=foo,type=bar]`
     KeyMatch(Vec<(String, String)>),
 }
 
@@ -72,14 +72,19 @@ impl JsonPath {
     }
 
     /// Convert path to a dot-separated key-only string for set-key config lookup.
-    /// Strips Root, Index, SetMarker, MultiSetMarker, KeyMatch segments.
-    /// e.g. $.users[id=1].orders → "users.orders"
+    ///
+    /// Strips Root, Index, `SetMarker`, `MultiSetMarker`, `KeyMatch` segments.
+    /// e.g. `$.users[id=1].orders` -> `"users.orders"`
     pub fn to_set_key_path(&self) -> String {
         self.segments
             .iter()
             .filter_map(|s| match s {
                 PathSegment::Key(k) => Some(k.as_str()),
-                _ => None,
+                PathSegment::Root
+                | PathSegment::Index(_)
+                | PathSegment::SetMarker
+                | PathSegment::MultiSetMarker
+                | PathSegment::KeyMatch(_) => None,
             })
             .collect::<Vec<_>>()
             .join(".")
@@ -93,12 +98,12 @@ impl fmt::Display for JsonPath {
                 PathSegment::Root => write!(f, "$")?,
                 PathSegment::Key(k) => {
                     if k.contains('.') || k.contains('[') || k.contains(' ') || k.contains('"') {
-                        write!(f, "[\"{}\"]", k)?;
+                        write!(f, "[\"{k}\"]")?;
                     } else {
-                        write!(f, ".{}", k)?;
+                        write!(f, ".{k}")?;
                     }
                 }
-                PathSegment::Index(i) => write!(f, "[{}]", i)?,
+                PathSegment::Index(i) => write!(f, "[{i}]")?,
                 PathSegment::SetMarker => write!(f, "[{{}}]")?,
                 PathSegment::MultiSetMarker => write!(f, "[[{{}}]]")?,
                 PathSegment::KeyMatch(pairs) => {
@@ -109,9 +114,9 @@ impl fmt::Display for JsonPath {
                         }
                         // Quote values that contain commas, equals, or quotes
                         if val.contains(',') || val.contains('=') || val.contains('"') {
-                            write!(f, "{}=\"{}\"", key, val)?;
+                            write!(f, "{key}=\"{val}\"")?;
                         } else {
-                            write!(f, "{}={}", key, val)?;
+                            write!(f, "{key}={val}")?;
                         }
                     }
                     write!(f, "]")?;
@@ -125,8 +130,8 @@ impl fmt::Display for JsonPath {
 /// Configuration for set-key based array matching
 #[derive(Debug, Clone)]
 pub struct SetKeyConfig {
-    /// Map from array path (dot-separated) to key field names
-    /// e.g. "users" -> ["id"], "orders" -> ["order_id", "type"]
+    /// Map from array path (dot-separated) to key field names.
+    /// e.g. `"users" -> ["id"]`, `"orders" -> ["order_id", "type"]`
     pub paths: HashMap<String, Vec<String>>,
     pub allow_missing: bool,
     pub allow_duplicates: bool,
@@ -150,7 +155,7 @@ impl Default for DiffConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ArrayCompareMode {
     #[default]
     Ordered,
@@ -171,4 +176,3 @@ pub struct DiffStats {
     pub removed: usize,
     pub modified: usize,
 }
-

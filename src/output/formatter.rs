@@ -1,7 +1,7 @@
 use super::color::ColorScheme;
 use crate::diff::{DiffOp, DiffResult, DiffStats};
-use colored::Colorize;
-use sonic_rs::{JsonContainerTrait, JsonValueTrait, Value};
+use colored::Colorize as _;
+use sonic_rs::{JsonContainerTrait as _, JsonValueTrait as _, Value};
 use std::io::{self, Write};
 
 pub struct PrettyFormatter {
@@ -47,7 +47,7 @@ impl PrettyFormatter {
                 for line in formatted.lines() {
                     let prefix = self.colorize("+ ", self.color_scheme.added);
                     let content = self.colorize(line, self.color_scheme.added);
-                    writeln!(out, "{}{}", prefix, content)?;
+                    writeln!(out, "{prefix}{content}")?;
                 }
                 writeln!(out)?;
             }
@@ -58,7 +58,7 @@ impl PrettyFormatter {
                 for line in formatted.lines() {
                     let prefix = self.colorize("- ", self.color_scheme.removed);
                     let content = self.colorize(line, self.color_scheme.removed);
-                    writeln!(out, "{}{}", prefix, content)?;
+                    writeln!(out, "{prefix}{content}")?;
                 }
                 writeln!(out)?;
             }
@@ -74,14 +74,14 @@ impl PrettyFormatter {
                 for line in old_formatted.lines() {
                     let prefix = self.colorize("- ", self.color_scheme.modified_old);
                     let content = self.colorize(line, self.color_scheme.modified_old);
-                    writeln!(out, "{}{}", prefix, content)?;
+                    writeln!(out, "{prefix}{content}")?;
                 }
 
                 let new_formatted = self.format_value(new_value, 2);
                 for line in new_formatted.lines() {
                     let prefix = self.colorize("+ ", self.color_scheme.modified_new);
                     let content = self.colorize(line, self.color_scheme.modified_new);
-                    writeln!(out, "{}{}", prefix, content)?;
+                    writeln!(out, "{prefix}{content}")?;
                 }
                 writeln!(out)?;
             }
@@ -93,27 +93,31 @@ impl PrettyFormatter {
         self.format_value_inner(value, indent, 0)
     }
 
-    fn format_value_inner(&self, value: &Value, base_indent: usize, current_depth: usize) -> String {
+    fn format_value_inner(
+        &self,
+        value: &Value,
+        base_indent: usize,
+        current_depth: usize,
+    ) -> String {
         let indent_str = " ".repeat(base_indent + current_depth * 2);
 
         if value.is_null() {
             return "null".to_string();
         }
-        if value.is_boolean() {
-            return value.as_bool().unwrap().to_string();
+        if let Some(b) = value.as_bool() {
+            return b.to_string();
         }
         if value.is_number() {
-            return format!("{}", value);
+            return format!("{value}");
         }
-        if value.is_str() {
-            return format!("\"{}\"", value.as_str().unwrap());
+        if let Some(s) = value.as_str() {
+            return format!("\"{s}\"");
         }
-        if value.is_array() {
-            let arr = value.as_array().unwrap();
+        if let Some(arr) = value.as_array() {
             if arr.is_empty() {
                 return "[]".to_string();
             }
-            if arr.len() <= 3 && self.is_simple_array(arr) {
+            if arr.len() <= 3 && is_simple_array(arr) {
                 // Inline short simple arrays
                 let items: Vec<String> = arr
                     .iter()
@@ -126,16 +130,14 @@ impl PrettyFormatter {
                 .iter()
                 .map(|v| {
                     format!(
-                        "{}{}",
-                        child_indent,
+                        "{child_indent}{}",
                         self.format_value_inner(v, base_indent, current_depth + 1)
                     )
                 })
                 .collect();
-            return format!("[\n{}\n{}]", items.join(",\n"), indent_str);
+            return format!("[\n{}\n{indent_str}]", items.join(",\n"));
         }
-        if value.is_object() {
-            let obj = value.as_object().unwrap();
+        if let Some(obj) = value.as_object() {
             if obj.is_empty() {
                 return "{}".to_string();
             }
@@ -144,22 +146,16 @@ impl PrettyFormatter {
                 .iter()
                 .map(|(k, v)| {
                     format!(
-                        "{}\"{}\": {}",
-                        child_indent,
-                        k,
+                        "{child_indent}\"{k}\": {}",
                         self.format_value_inner(v, base_indent, current_depth + 1)
                     )
                 })
                 .collect();
-            return format!("{{\n{}\n{}}}", items.join(",\n"), indent_str);
+            return format!("{{\n{}\n{indent_str}}}", items.join(",\n"));
         }
 
         // Fallback
-        format!("{}", value)
-    }
-
-    fn is_simple_array(&self, arr: &sonic_rs::Array) -> bool {
-        arr.iter().all(|v| v.is_null() || v.is_boolean() || v.is_number() || v.is_str())
+        format!("{value}")
     }
 
     fn write_summary<W: Write>(&self, stats: &DiffStats, out: &mut W) -> io::Result<()> {
@@ -167,13 +163,13 @@ impl PrettyFormatter {
             "----------------------------------------",
             self.color_scheme.separator,
         );
-        writeln!(out, "{}", separator)?;
+        writeln!(out, "{separator}")?;
 
         let added = self.colorize(&stats.added.to_string(), self.color_scheme.added);
         let removed = self.colorize(&stats.removed.to_string(), self.color_scheme.removed);
         let modified = self.colorize(&stats.modified.to_string(), colored::Color::Yellow);
 
-        writeln!(out, "{} added, {} removed, {} modified", added, removed, modified)?;
+        writeln!(out, "{added} added, {removed} removed, {modified} modified")?;
         Ok(())
     }
 
@@ -184,6 +180,11 @@ impl PrettyFormatter {
             text.to_string()
         }
     }
+}
+
+fn is_simple_array(arr: &sonic_rs::Array) -> bool {
+    arr.iter()
+        .all(|v| v.is_null() || v.is_boolean() || v.is_number() || v.is_str())
 }
 
 /// Format diff result as JSON

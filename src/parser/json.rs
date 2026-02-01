@@ -1,8 +1,9 @@
 use crate::error::JsonDiffError;
 use memmap2::Mmap;
 use sonic_rs::Value;
-use std::io::Read;
+use std::io::Read as _;
 use std::path::Path;
+use std::{fs, io};
 
 const MMAP_THRESHOLD: u64 = 10 * 1024 * 1024; // 10MB
 
@@ -15,7 +16,7 @@ impl JsonParser {
             return Err(JsonDiffError::FileNotFound(path.to_path_buf()));
         }
 
-        let metadata = std::fs::metadata(path).map_err(|e| JsonDiffError::FileRead {
+        let metadata = fs::metadata(path).map_err(|e| JsonDiffError::FileRead {
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
@@ -30,7 +31,7 @@ impl JsonParser {
     /// Parse JSON from stdin
     pub fn parse_stdin() -> Result<Value, JsonDiffError> {
         let mut buffer = Vec::new();
-        std::io::stdin()
+        io::stdin()
             .read_to_end(&mut buffer)
             .map_err(|e| JsonDiffError::FileRead {
                 path: "<stdin>".into(),
@@ -44,7 +45,7 @@ impl JsonParser {
     }
 
     fn parse_file_direct(path: &Path) -> Result<Value, JsonDiffError> {
-        let content = std::fs::read(path).map_err(|e| JsonDiffError::FileRead {
+        let content = fs::read(path).map_err(|e| JsonDiffError::FileRead {
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
@@ -55,15 +56,18 @@ impl JsonParser {
         })
     }
 
+    #[expect(unsafe_code, reason = "mmap requires unsafe; file handle is kept alive")]
     fn parse_file_mmap(path: &Path) -> Result<Value, JsonDiffError> {
-        let file = std::fs::File::open(path).map_err(|e| JsonDiffError::FileRead {
+        let file = fs::File::open(path).map_err(|e| JsonDiffError::FileRead {
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
 
+        // SAFETY: The file handle is kept alive for the duration of the mmap usage.
+        // The mmap is read-only and consumed immediately by the JSON parser.
         let mmap = unsafe { Mmap::map(&file) }.map_err(|e| JsonDiffError::FileRead {
             path: path.to_path_buf(),
-            message: format!("Memory mapping failed: {}", e),
+            message: format!("Memory mapping failed: {e}"),
         })?;
 
         sonic_rs::from_slice(&mmap).map_err(|e| JsonDiffError::InvalidJson {

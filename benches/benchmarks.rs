@@ -1,3 +1,11 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::integer_division,
+    clippy::significant_drop_tightening,
+    clippy::too_many_lines,
+    reason = "benchmark code: unwraps, integer math, and long functions are fine"
+)]
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use sonic_rs::Value;
 use std::fs;
@@ -17,7 +25,7 @@ const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/benches/fixture
 fn generate_object(n: usize) -> String {
     let mut parts = Vec::with_capacity(n);
     for i in 0..n {
-        parts.push(format!(r#""key_{}": "value_{}""#, i, i));
+        parts.push(format!(r#""key_{i}": "value_{i}""#));
     }
     format!("{{{}}}", parts.join(", "))
 }
@@ -49,11 +57,11 @@ fn generate_diff_pair(n: usize, diff_percent: usize) -> (String, String) {
     let mut parts2 = Vec::with_capacity(n);
 
     for i in 0..n {
-        parts1.push(format!(r#""key_{}": "value_{}""#, i, i));
+        parts1.push(format!(r#""key_{i}": "value_{i}""#));
         if i < diff_count {
-            parts2.push(format!(r#""key_{}": "changed_{}""#, i, i));
+            parts2.push(format!(r#""key_{i}": "changed_{i}""#));
         } else {
-            parts2.push(format!(r#""key_{}": "value_{}""#, i, i));
+            parts2.push(format!(r#""key_{i}": "value_{i}""#));
         }
     }
 
@@ -66,8 +74,8 @@ fn generate_completely_different(n: usize) -> (String, String) {
     let mut parts2 = Vec::with_capacity(n);
 
     for i in 0..n {
-        parts1.push(format!(r#""old_key_{}": "old_value_{}""#, i, i));
-        parts2.push(format!(r#""new_key_{}": "new_value_{}""#, i, i));
+        parts1.push(format!(r#""old_key_{i}": "old_value_{i}""#));
+        parts2.push(format!(r#""new_key_{i}": "new_value_{i}""#));
     }
 
     (format!("{{{}}}", parts1.join(", ")), format!("{{{}}}", parts2.join(", ")))
@@ -88,7 +96,7 @@ fn bench_diff_objects(c: &mut Criterion) {
     let engine = DiffEngine::new(config);
 
     // Benchmark identical objects (best case - tests short-circuit)
-    for size in [10, 100, 1000].iter() {
+    for size in &[10, 100, 1000] {
         let json = generate_object(*size);
         let left: Value = sonic_rs::from_str(&json).unwrap();
         let right: Value = sonic_rs::from_str(&json).unwrap();
@@ -103,7 +111,7 @@ fn bench_diff_objects(c: &mut Criterion) {
     }
 
     // Benchmark objects with 10% differences
-    for size in [10, 100, 1000].iter() {
+    for size in &[10, 100, 1000] {
         let (json1, json2) = generate_diff_pair(*size, 10);
         let left: Value = sonic_rs::from_str(&json1).unwrap();
         let right: Value = sonic_rs::from_str(&json2).unwrap();
@@ -118,7 +126,7 @@ fn bench_diff_objects(c: &mut Criterion) {
     }
 
     // Benchmark objects with 50% differences
-    for size in [10, 100, 1000].iter() {
+    for size in &[10, 100, 1000] {
         let (json1, json2) = generate_diff_pair(*size, 50);
         let left: Value = sonic_rs::from_str(&json1).unwrap();
         let right: Value = sonic_rs::from_str(&json2).unwrap();
@@ -133,7 +141,7 @@ fn bench_diff_objects(c: &mut Criterion) {
     }
 
     // Benchmark completely different objects (worst case)
-    for size in [10, 100, 1000].iter() {
+    for size in &[10, 100, 1000] {
         let (json1, json2) = generate_completely_different(*size);
         let left: Value = sonic_rs::from_str(&json1).unwrap();
         let right: Value = sonic_rs::from_str(&json2).unwrap();
@@ -182,7 +190,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
     let multiset_engine = DiffEngine::new(multiset_config);
 
     // Benchmark ordered array diff with identical arrays (best case for early termination)
-    for size in [10, 100, 500, 1000].iter() {
+    for size in &[10, 100, 500, 1000] {
         let json = generate_array(*size);
         let left: Value = sonic_rs::from_str(&json).unwrap();
         let right: Value = sonic_rs::from_str(&json).unwrap();
@@ -197,7 +205,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
     }
 
     // Benchmark ordered array diff (with 10% elements changed)
-    for size in [10, 100, 500, 1000].iter() {
+    for size in &[10, 100, 500, 1000] {
         let json1 = generate_array(*size);
         let json2 = {
             let elements: Vec<String> = (0..*size)
@@ -219,7 +227,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
     }
 
     // Benchmark ordered array diff with high similarity (5% diff at end - tests suffix matching)
-    for size in [10, 100, 500, 1000].iter() {
+    for size in &[10, 100, 500, 1000] {
         let json1 = generate_array(*size);
         let json2 = {
             // Change only the last 5% of elements
@@ -243,7 +251,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
     }
 
     // Benchmark set mode with actual differences (some elements only in one side)
-    for size in [10, 100, 500, 1000].iter() {
+    for size in &[10, 100, 500, 1000] {
         // First array: 0..size
         // Second array: size/2..size*3/2 (50% overlap)
         let elements1: Vec<String> = (0..*size).map(|i| i.to_string()).collect();
@@ -265,7 +273,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
     }
 
     // Benchmark multiset mode with duplicates (few unique values)
-    for size in [10, 100, 500, 1000].iter() {
+    for size in &[10, 100, 500, 1000] {
         // Arrays with duplicates and different counts - only 10 unique values
         let elements1: Vec<String> = (0..*size).map(|i| (i % 10).to_string()).collect();
         let elements2: Vec<String> = (0..*size).map(|i| ((i + 1) % 10).to_string()).collect();
@@ -286,7 +294,7 @@ fn bench_diff_arrays(c: &mut Criterion) {
     }
 
     // Benchmark multiset mode with unique values (true O(n²) stress test)
-    for size in [10, 100, 500, 1000].iter() {
+    for size in &[10, 100, 500, 1000] {
         // 50% overlap with all unique values - same pattern as set mode
         let elements1: Vec<String> = (0..*size).map(|i| i.to_string()).collect();
         let elements2: Vec<String> = (size / 2..size + size / 2).map(|i| i.to_string()).collect();
@@ -324,7 +332,7 @@ fn bench_nested_diff(c: &mut Criterion) {
     let engine = DiffEngine::new(config);
 
     // Benchmark nested structure diff
-    for depth in [2, 4, 6].iter() {
+    for depth in &[2, 4, 6] {
         let json1 = generate_nested(*depth, 3);
         let json2 = generate_nested(*depth, 3).replace("leaf", "changed");
 
@@ -349,18 +357,18 @@ fn bench_nested_diff(c: &mut Criterion) {
 
 /// Load a fixture file and parse it as JSON
 fn load_fixture(filename: &str) -> Option<Value> {
-    let path = format!("{}/{}", FIXTURES_DIR, filename);
+    let path = format!("{FIXTURES_DIR}/{filename}");
     let content = match fs::read_to_string(&path) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Warning: Could not load fixture {}: {}", filename, e);
+            eprintln!("Warning: Could not load fixture {filename}: {e}");
             return None;
         }
     };
     match sonic_rs::from_str(&content) {
         Ok(v) => Some(v),
         Err(e) => {
-            eprintln!("Warning: Could not parse fixture {}: {}", filename, e);
+            eprintln!("Warning: Could not parse fixture {filename}: {e}");
             None
         }
     }
@@ -473,10 +481,10 @@ fn bench_real_world_fixtures(c: &mut Criterion) {
 // ============================================================================
 
 /// Generate a JSON array of objects with id fields, wrapped in a root object.
-/// Each object has: {"id": i, "name": "name_i", "value": "val_i"}
+/// Each object has: {"id": i, "name": "`name_i`", "value": "`val_i`"}
 fn generate_keyed_array(n: usize, key: &str) -> String {
     let elements: Vec<String> = (0..n)
-        .map(|i| format!(r#"{{"{}": {}, "name": "name_{}", "value": "val_{}"}}"#, key, i, i, i))
+        .map(|i| format!(r#"{{"{key}": {i}, "name": "name_{i}", "value": "val_{i}"}}"#))
         .collect();
     format!(r#"{{"items": [{}]}}"#, elements.join(", "))
 }
@@ -494,7 +502,7 @@ fn generate_keyed_diff_pair(
 
     // Left: sequential order
     let left_elements: Vec<String> = (0..n)
-        .map(|i| format!(r#"{{"id": {}, "name": "name_{}", "value": "val_{}"}}"#, i, i, i))
+        .map(|i| format!(r#"{{"id": {i}, "name": "name_{i}", "value": "val_{i}"}}"#))
         .collect();
 
     // Right: reverse order, with modifications, removals, and additions
@@ -504,11 +512,10 @@ fn generate_keyed_diff_pair(
         .map(|i| {
             if i < diff_count + remove_count {
                 format!(
-                    r#"{{"id": {}, "name": "name_{}", "value": "changed_{}"}}"#,
-                    i, i, i
+                    r#"{{"id": {i}, "name": "name_{i}", "value": "changed_{i}"}}"#
                 )
             } else {
-                format!(r#"{{"id": {}, "name": "name_{}", "value": "val_{}"}}"#, i, i, i)
+                format!(r#"{{"id": {i}, "name": "name_{i}", "value": "val_{i}"}}"#)
             }
         })
         .collect();
@@ -517,8 +524,7 @@ fn generate_keyed_diff_pair(
     for i in 0..add_count {
         let new_id = n + i;
         right_elements.push(format!(
-            r#"{{"id": {}, "name": "new_{}", "value": "new_val_{}"}}"#,
-            new_id, new_id, new_id
+            r#"{{"id": {new_id}, "name": "new_{new_id}", "value": "new_val_{new_id}"}}"#
         ));
     }
 
@@ -528,14 +534,14 @@ fn generate_keyed_diff_pair(
     )
 }
 
-fn make_set_key_config(path: &str, key: &str) -> Option<SetKeyConfig> {
+fn make_set_key_config(path: &str, key: &str) -> SetKeyConfig {
     let mut paths = HashMap::new();
     paths.insert(path.to_string(), vec![key.to_string()]);
-    Some(SetKeyConfig {
+    SetKeyConfig {
         paths,
         allow_missing: true,
         allow_duplicates: true,
-    })
+    }
 }
 
 fn bench_diff_set_key(c: &mut Criterion) {
@@ -544,17 +550,17 @@ fn bench_diff_set_key(c: &mut Criterion) {
     let config = DiffConfig {
         array_mode: ArrayCompareMode::Ordered,
         ordered_objects: false,
-        set_keys: make_set_key_config("items", "id"),
+        set_keys: Some(make_set_key_config("items", "id")),
     };
     let engine = DiffEngine::new(config);
 
     // Identical arrays (reordered) - best case: all matched, no diffs
-    for size in [10, 100, 500, 1000].iter() {
+    for size in &[10, 100, 500, 1000] {
         let json1 = generate_keyed_array(*size, "id");
         // Reverse the array order for the second file
         let elements_rev: Vec<String> = (0..*size)
             .rev()
-            .map(|i| format!(r#"{{"id": {}, "name": "name_{}", "value": "val_{}"}}"#, i, i, i))
+            .map(|i| format!(r#"{{"id": {i}, "name": "name_{i}", "value": "val_{i}"}}"#))
             .collect();
         let json2 = format!(r#"{{"items": [{}]}}"#, elements_rev.join(", "));
 
@@ -571,7 +577,7 @@ fn bench_diff_set_key(c: &mut Criterion) {
     }
 
     // 10% of values modified, no additions/removals
-    for size in [10, 100, 500, 1000].iter() {
+    for size in &[10, 100, 500, 1000] {
         let (json1, json2) = generate_keyed_diff_pair(*size, 10, 0, 0);
         let left: Value = sonic_rs::from_str(&json1).unwrap();
         let right: Value = sonic_rs::from_str(&json2).unwrap();
@@ -586,7 +592,7 @@ fn bench_diff_set_key(c: &mut Criterion) {
     }
 
     // 10% removed + 10% added (churn)
-    for size in [10, 100, 500, 1000].iter() {
+    for size in &[10, 100, 500, 1000] {
         let remove = *size / 10;
         let add = *size / 10;
         let (json1, json2) = generate_keyed_diff_pair(*size, 0, remove, add);
@@ -603,7 +609,7 @@ fn bench_diff_set_key(c: &mut Criterion) {
     }
 
     // 50% modified + 10% removed + 10% added (heavy diff)
-    for size in [10, 100, 500, 1000].iter() {
+    for size in &[10, 100, 500, 1000] {
         let remove = *size / 10;
         let add = *size / 10;
         let (json1, json2) = generate_keyed_diff_pair(*size, 50, remove, add);

@@ -1,3 +1,4 @@
+use std::io;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -29,17 +30,19 @@ pub enum JsonDiffError {
     InvalidSetKey { arg: String, reason: String },
 
     #[error("Output error: {0}")]
-    OutputError(#[from] std::io::Error),
+    OutputError(#[from] io::Error),
 }
 
 impl JsonDiffError {
-    pub fn exit_code(&self) -> i32 {
+    pub const fn exit_code(&self) -> u8 {
         match self {
             Self::FileNotFound(_) => 2,
             Self::InvalidJson { .. } => 3,
             Self::FileRead { .. } => 4,
-            Self::SetKeyMissing { .. } | Self::SetKeyDuplicate { .. } | Self::InvalidSetKey { .. } => 5,
-            _ => 1,
+            Self::SetKeyMissing { .. }
+            | Self::SetKeyDuplicate { .. }
+            | Self::InvalidSetKey { .. } => 5,
+            Self::StdinConflict | Self::OutputError(_) => 1,
         }
     }
 }
