@@ -2,7 +2,7 @@ use clap::Parser as _;
 use colored::Colorize as _;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::io::{self, Write as _};
+use std::io::{self, IsTerminal as _, Write as _};
 use std::process::ExitCode;
 
 mod cli;
@@ -33,7 +33,7 @@ fn run() -> Result<(), JsonDiffError> {
     let args = Args::parse();
 
     // Determine color output
-    let colors_enabled = !args.no_color && atty::is(atty::Stream::Stdout);
+    let colors_enabled = !args.no_color && io::stdout().is_terminal();
 
     // Parse set-key arguments into config
     let set_keys = if args.set_keys.is_empty() {
