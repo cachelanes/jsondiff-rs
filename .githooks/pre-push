@@ -1,5 +1,6 @@
 #!/bin/bash
-# Pre-push hook: run fmt, clippy, and tests before pushing
+# Pre-push hook: run checks before pushing
+# Ordered cheapest-first so failures are caught fast
 
 set -e
 
@@ -8,6 +9,9 @@ cargo fmt -- --check
 
 echo "Running cargo clippy..."
 cargo clippy --all-targets -- -D warnings
+
+echo "Running cargo deny..."
+cargo deny check
 
 echo "Running cargo test..."
 cargo test --quiet
