@@ -1,15 +1,17 @@
-use super::array::{diff_arrays_as_multiset, diff_arrays_as_set, diff_arrays_ordered, diff_arrays_with_set_key};
+use super::array::{
+    diff_arrays_as_multiset, diff_arrays_as_set, diff_arrays_ordered, diff_arrays_with_set_key,
+};
 use super::object::diff_objects;
 use super::types::{ArrayCompareMode, DiffConfig, DiffOp, DiffResult, DiffStats, JsonPath};
 use crate::error::JsonDiffError;
-use sonic_rs::{JsonContainerTrait, JsonValueTrait, Value};
+use sonic_rs::{JsonContainerTrait as _, JsonValueTrait as _, Value};
 
 pub struct DiffEngine {
     config: DiffConfig,
 }
 
 impl DiffEngine {
-    pub fn new(config: DiffConfig) -> Self {
+    pub const fn new(config: DiffConfig) -> Self {
         Self { config }
     }
 
@@ -34,7 +36,12 @@ impl DiffEngine {
 }
 
 /// Compare two JSON values and return the differences
-pub fn diff_values(left: &Value, right: &Value, path: &JsonPath, config: &DiffConfig) -> Result<Vec<DiffOp>, JsonDiffError> {
+pub fn diff_values(
+    left: &Value,
+    right: &Value,
+    path: &JsonPath,
+    config: &DiffConfig,
+) -> Result<Vec<DiffOp>, JsonDiffError> {
     // If values are equal, no diff
     if left == right {
         return Ok(vec![]);
@@ -54,15 +61,11 @@ pub fn diff_values(left: &Value, right: &Value, path: &JsonPath, config: &DiffCo
     }
 
     // Same type, compare based on type
-    if left.is_object() && right.is_object() {
-        let l = left.as_object().unwrap();
-        let r = right.as_object().unwrap();
+    if let (Some(l), Some(r)) = (left.as_object(), right.as_object()) {
         return diff_objects(l, r, path, config);
     }
 
-    if left.is_array() && right.is_array() {
-        let l = left.as_array().unwrap();
-        let r = right.as_array().unwrap();
+    if let (Some(l), Some(r)) = (left.as_array(), right.as_array()) {
         let left_slice: Vec<Value> = l.iter().cloned().collect();
         let right_slice: Vec<Value> = r.iter().cloned().collect();
 
@@ -85,10 +88,15 @@ pub fn diff_values(left: &Value, right: &Value, path: &JsonPath, config: &DiffCo
             ArrayCompareMode::Ordered => {
                 diff_arrays_ordered(&left_slice, &right_slice, path, config)
             }
-            ArrayCompareMode::Set => Ok(diff_arrays_as_set(&left_slice, &right_slice, path, config)),
-            ArrayCompareMode::MultiSet => {
-                Ok(diff_arrays_as_multiset(&left_slice, &right_slice, path, config))
+            ArrayCompareMode::Set => {
+                Ok(diff_arrays_as_set(&left_slice, &right_slice, path, config))
             }
+            ArrayCompareMode::MultiSet => Ok(diff_arrays_as_multiset(
+                &left_slice,
+                &right_slice,
+                path,
+                config,
+            )),
         };
     }
 

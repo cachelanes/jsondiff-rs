@@ -32,9 +32,6 @@ memmap2 = "0.9"
 # Parallel processing
 rayon = "1.11"
 
-# Terminal detection
-atty = "0.2"
-
 [dev-dependencies]
 assert_cmd = "2.1"
 predicates = "3.1"
@@ -43,7 +40,82 @@ proptest = "1.9"
 insta = { version = "1.46", features = ["json"] }
 # codspeed-criterion-compat is compatible with and passes through to criterion for `cargo bench`
 # criterion's features are also supported, see: https://github.com/CodSpeedHQ/codspeed-rust/blob/main/crates/criterion_compat/Cargo.toml
-criterion = { version = "4.2.1", package = "codspeed-criterion-compat", features = ["html_reports"] }
+criterion = { version = "4.3.0", package = "codspeed-criterion-compat", features = ["html_reports"] }
+
+############################### Here be Lints ##################################
+[lints.rust]
+unsafe_code = "deny" # deny (not forbid) to allow #[allow] for mmap
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+#################################### Warns #####################################
+#--- suspicious, complexity, perf & style groups are warn-by-default
+#--- set entire pedantic group to warn (pedantic is intended for opt-outs)
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+#--- selective lints from restriction group (restriction is intended for opt-ins)
+absolute_paths = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+clone_on_ref_ptr = "warn"
+create_dir = "warn"
+empty_enum_variants_with_brackets = "warn"
+empty_structs_with_brackets = "warn"
+error_impl_error = "warn"
+filetype_is_file = "warn"
+fn_to_numeric_cast_any = "warn"
+format_push_string = "warn"
+if_then_some_else_none = "warn"
+impl_trait_in_params = "warn"
+infinite_loop = "warn"
+integer_division = "warn"
+let_underscore_untyped = "warn"
+lossy_float_literal = "warn"
+map_err_ignore = "warn"
+map_with_unused_argument_over_ranges = "warn"
+min_ident_chars = "warn"
+mem_forget = "warn"
+missing_assert_message = "warn"
+missing_asserts_for_indexing = "warn"
+mixed_read_write_in_expression = "warn"
+multiple_inherent_impl = "warn"
+multiple_unsafe_ops_per_block = "warn"
+mutex_atomic = "warn"
+non_zero_suggestions = "warn"
+panic_in_result_fn = "warn"
+partial_pub_fields = "warn"
+pathbuf_init_then_push = "warn"
+pub_without_shorthand = "warn"
+rc_buffer = "warn"
+rc_mutex = "warn"
+renamed_function_params = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+same_name_method = "warn"
+self_named_module_files = "warn"
+semicolon_outside_block = "warn"
+shadow_unrelated = "warn"
+try_err = "warn"
+undocumented_unsafe_blocks = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+unnecessary_self_imports = "warn"
+unneeded_field_pattern = "warn"
+unseparated_literal_suffix = "warn"
+unused_result_ok = "warn"
+unused_trait_names = "warn"
+unwrap_in_result = "warn"
+unwrap_used = "warn"
+verbose_file_reads = "warn"
+wildcard_enum_match_arm = "warn"
+#################################### Allows ####################################
+#--- selective opt-outs from pedantic group
+map_unwrap_or = "allow"          # reduces readability; see https://github.com/rust-lang/rust-clippy/issues/10428
+module_name_repetitions = "allow" # types like JsonPath, DiffConfig are clearer with the prefix
+missing_errors_doc = "allow"      # CLI tool, not a public library API
+must_use_candidate = "allow"      # internal CLI functions, not a library
+return_self_not_must_use = "allow" # builder-style methods on JsonPath
+missing_panics_doc = "allow"      # panics are guarded by type checks, documented via expect attrs
+self_only_used_in_recursion = "allow" # recursive methods on formatters are a valid pattern
 
 [profile.release]
 lto = true

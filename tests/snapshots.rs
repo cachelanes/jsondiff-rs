@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, reason = "test code: unwraps are fine")]
+
 use assert_cmd::cargo::cargo_bin_cmd;
 use insta::assert_snapshot;
 

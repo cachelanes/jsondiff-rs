@@ -33,9 +33,9 @@ sonic-rs is not serde_json. Key differences:
 // Must import traits for API access
 use sonic_rs::{JsonValueTrait, JsonContainerTrait};
 
-// No pattern matching - use methods
-if value.is_object() { value.as_object().unwrap() }
-if value.is_array() { value.as_array().unwrap() }
+// No pattern matching on Value - use if-let with as_*() methods
+if let Some(obj) = value.as_object() { /* use obj */ }
+if let (Some(l), Some(r)) = (left.as_array(), right.as_array()) { /* use l, r */ }
 
 // Object.get() needs owned String
 obj.get(&key.to_string())  // not obj.get(key)
@@ -47,6 +47,13 @@ obj.get(&key.to_string())  // not obj.get(key)
 - **Exit codes**: Always 0 on success (not 1 for differences)
 - **Objects**: Unordered by default (use `-o` for ordered)
 - **Arrays**: Ordered by default (use `-s` for set, `-m` for multiset)
+
+## Code Conventions
+
+- **Prefer `if let` over `is_*()` + `unwrap()`**: Use `if let Some(x) = value.as_*()` instead of `if value.is_*() { value.as_*().unwrap() }`. This eliminates the redundant type check and the unwrap in one go.
+- **Readability over lint compliance**: If a clippy lint suggests a less readable transformation (e.g. `option_if_let_else` wanting `map_or_else` over a clear `match`), prefer the readable form and add a targeted `#[expect]` with a reason. If these pile up, disable the lint in `Cargo.toml` instead.
+- **`.expect()` messages should state the expectation**: Write what you expect to be true, not what you're doing. e.g. `"results should have a second element"` not `"parallel parse of 2 files"`.
+- **Unused trait imports**: Import sonic-rs traits as `_ ` to avoid unused-name warnings: `use sonic_rs::JsonValueTrait as _`.
 
 ## Commit Messages
 

@@ -1,4 +1,7 @@
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "path formatting utilities reserved for future use"
+)]
 
 use crate::diff::JsonPath;
 

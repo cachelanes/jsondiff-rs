@@ -1,3 +1,9 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::integer_division,
+    reason = "test code: unwraps and integer math are fine"
+)]
+
 use jsondiff::diff::{
     engine::DiffEngine,
     types::{ArrayCompareMode, DiffConfig, DiffOp},
@@ -9,7 +15,7 @@ use sonic_rs::Value;
 // Property Test Strategies
 // ============================================================================
 
-/// Generate arbitrary JSON-like values as sonic_rs Values
+/// Generate arbitrary JSON-like values as `sonic_rs` Values
 fn arb_json_primitive() -> impl Strategy<Value = Value> {
     prop_oneof![
         Just(Value::default()), // null
@@ -22,7 +28,7 @@ fn arb_json_primitive() -> impl Strategy<Value = Value> {
     ]
 }
 
-/// Generate simple JSON objects as sonic_rs Values
+/// Generate simple JSON objects as `sonic_rs` Values
 fn arb_simple_json_object() -> impl Strategy<Value = Value> {
     prop::collection::vec(
         (
@@ -45,7 +51,7 @@ fn arb_simple_json_object() -> impl Strategy<Value = Value> {
     })
 }
 
-/// Generate simple JSON arrays as sonic_rs Values
+/// Generate simple JSON arrays as `sonic_rs` Values
 fn arb_simple_json_array() -> impl Strategy<Value = Value> {
     prop::collection::vec(arb_json_primitive(), 0..10).prop_map(|items| {
         let arr: sonic_rs::Array = items.into_iter().collect();
@@ -133,7 +139,7 @@ proptest! {
         elements in prop::collection::vec(any::<i32>(), 1..10)
     ) {
         let arr1: sonic_rs::Array = elements.iter().map(|n| sonic_rs::json!(n)).collect();
-        let mut reversed = elements.clone();
+        let mut reversed = elements;
         reversed.reverse();
         let arr2: sonic_rs::Array = reversed.iter().map(|n| sonic_rs::json!(n)).collect();
 
@@ -148,11 +154,11 @@ proptest! {
     /// In multiset mode, arrays with same element counts should be equal
     #[test]
     fn prop_array_multiset_count_based(
-        elements in prop::collection::vec(1..5i32, 1..8)
+        elements in prop::collection::vec(1..5_i32, 1..8)
     ) {
         let arr1: sonic_rs::Array = elements.iter().map(|n| sonic_rs::json!(n)).collect();
-        let mut sorted = elements.clone();
-        sorted.sort();
+        let mut sorted = elements;
+        sorted.sort_unstable();
         sorted.reverse();
         let arr2: sonic_rs::Array = sorted.iter().map(|n| sonic_rs::json!(n)).collect();
 
@@ -173,8 +179,8 @@ proptest! {
     /// In set mode, diff(A, B) and diff(B, A) should have symmetric counts
     #[test]
     fn prop_set_mode_symmetric_counts(
-        elements1 in prop::collection::vec(1..10i32, 0..5),
-        elements2 in prop::collection::vec(1..10i32, 0..5)
+        elements1 in prop::collection::vec(1..10_i32, 0..5),
+        elements2 in prop::collection::vec(1..10_i32, 0..5)
     ) {
         let arr1: sonic_rs::Array = elements1.iter().map(|n| sonic_rs::json!(n)).collect();
         let arr2: sonic_rs::Array = elements2.iter().map(|n| sonic_rs::json!(n)).collect();
