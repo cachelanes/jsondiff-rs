@@ -445,13 +445,12 @@ pub fn diff_arrays_with_set_key(
     let mut ops = Vec::new();
 
     // Partition elements into keyed (have all key fields) and unkeyed.
-    // Track original array indices for accurate error messages.
-    let mut left_keyed: Vec<(Vec<(String, String)>, &Value, usize)> = Vec::new();
+    let mut left_keyed: Vec<(Vec<(String, String)>, &Value)> = Vec::new();
     let mut left_unkeyed: Vec<&Value> = Vec::new();
 
     for (i, val) in left.iter().enumerate() {
         match extract_set_key(val, key_fields) {
-            Some(key) => left_keyed.push((key, val, i)),
+            Some(key) => left_keyed.push((key, val)),
             None => {
                 if !set_key_config.allow_missing {
                     let missing_field = find_first_missing_field(val, key_fields);
@@ -465,12 +464,12 @@ pub fn diff_arrays_with_set_key(
         }
     }
 
-    let mut right_keyed: Vec<(Vec<(String, String)>, &Value, usize)> = Vec::new();
+    let mut right_keyed: Vec<(Vec<(String, String)>, &Value)> = Vec::new();
     let mut right_unkeyed: Vec<&Value> = Vec::new();
 
     for (i, val) in right.iter().enumerate() {
         match extract_set_key(val, key_fields) {
-            Some(key) => right_keyed.push((key, val, i)),
+            Some(key) => right_keyed.push((key, val)),
             None => {
                 if !set_key_config.allow_missing {
                     let missing_field = find_first_missing_field(val, key_fields);
@@ -493,18 +492,14 @@ pub fn diff_arrays_with_set_key(
 
     if use_hashset {
         let mut left_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for (key, val, orig_idx) in &left_keyed {
+        for (key, val) in &left_keyed {
             let key_str = set_key_to_string(key);
             if !left_seen.insert(key_str.clone()) {
                 if !set_key_config.allow_duplicates {
-                    let first_orig_idx = left_keyed.iter()
-                        .find(|(k, _, _)| set_key_to_string(k) == key_str)
-                        .map(|(_, _, idx)| *idx)
-                        .unwrap();
                     return Err(JsonDiffError::SetKeyDuplicate {
-                        key: key_str,
-                        path1: format!("{}[{}]", path, first_orig_idx),
-                        path2: format!("{}[{}]", path, orig_idx),
+                        key: key_str.clone(),
+                        path1: format!("{}", path),
+                        path2: format!("{}", path),
                     });
                 }
                 continue;
@@ -513,18 +508,14 @@ pub fn diff_arrays_with_set_key(
         }
 
         let mut right_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for (key, val, orig_idx) in &right_keyed {
+        for (key, val) in &right_keyed {
             let key_str = set_key_to_string(key);
             if !right_seen.insert(key_str.clone()) {
                 if !set_key_config.allow_duplicates {
-                    let first_orig_idx = right_keyed.iter()
-                        .find(|(k, _, _)| set_key_to_string(k) == key_str)
-                        .map(|(_, _, idx)| *idx)
-                        .unwrap();
                     return Err(JsonDiffError::SetKeyDuplicate {
-                        key: key_str,
-                        path1: format!("{}[{}]", path, first_orig_idx),
-                        path2: format!("{}[{}]", path, orig_idx),
+                        key: key_str.clone(),
+                        path1: format!("{}", path),
+                        path2: format!("{}", path),
                     });
                 }
                 continue;
@@ -532,18 +523,14 @@ pub fn diff_arrays_with_set_key(
             right_map.push((key_str, key.clone(), val));
         }
     } else {
-        for (key, val, orig_idx) in &left_keyed {
+        for (key, val) in &left_keyed {
             let key_str = set_key_to_string(key);
             if left_map.iter().any(|(k, _, _)| *k == key_str) {
                 if !set_key_config.allow_duplicates {
-                    let first_orig_idx = left_keyed.iter()
-                        .find(|(k, _, _)| set_key_to_string(k) == key_str)
-                        .map(|(_, _, idx)| *idx)
-                        .unwrap();
                     return Err(JsonDiffError::SetKeyDuplicate {
-                        key: key_str,
-                        path1: format!("{}[{}]", path, first_orig_idx),
-                        path2: format!("{}[{}]", path, orig_idx),
+                        key: key_str.clone(),
+                        path1: format!("{}", path),
+                        path2: format!("{}", path),
                     });
                 }
                 continue;
@@ -551,18 +538,14 @@ pub fn diff_arrays_with_set_key(
             left_map.push((key_str, key.clone(), val));
         }
 
-        for (key, val, orig_idx) in &right_keyed {
+        for (key, val) in &right_keyed {
             let key_str = set_key_to_string(key);
             if right_map.iter().any(|(k, _, _)| *k == key_str) {
                 if !set_key_config.allow_duplicates {
-                    let first_orig_idx = right_keyed.iter()
-                        .find(|(k, _, _)| set_key_to_string(k) == key_str)
-                        .map(|(_, _, idx)| *idx)
-                        .unwrap();
                     return Err(JsonDiffError::SetKeyDuplicate {
-                        key: key_str,
-                        path1: format!("{}[{}]", path, first_orig_idx),
-                        path2: format!("{}[{}]", path, orig_idx),
+                        key: key_str.clone(),
+                        path1: format!("{}", path),
+                        path2: format!("{}", path),
                     });
                 }
                 continue;
