@@ -51,9 +51,20 @@ Match array objects by a specific key field instead of by position.
 |----------|--------------------------------------------------------|
 | Reasoning | Allows changing defaults later based on user feedback without breaking API. `--no-set-key-allow-missing` for strict mode. |
 
----
+### 7. No Array-Index Tracking in Duplicate-Key Errors
 
-## CLI Interface
+| Decision | Errors report path + key value, not element indices |
+|----------|-----------------------------------------------------|
+| Alternatives considered | Track original array index per element through keyed partition |
+| Reasoning | 15-20% hot-path regression at n=10/100 for marginal UX benefit on a rare error path |
+
+**Error format:** `duplicate set-key [id=42] found in $.users` — no `[14]` and `[87]`.
+
+An earlier implementation widened keyed tuples from `(key, &Value)` to `(key, &Value, usize)` to report original array positions in duplicate-key errors. Benchmarking showed a consistent 15-20% regression across all scenarios at n=10 and n=100 (the common case), purely from the wider tuple and index-lookup overhead.
+
+The key value in the error (`[id=42]`) is sufficient for locating duplicates — users search by value (`jq`, `grep`), not by counting array positions. The duplicate-key error itself is uncommon (malformed input), so optimizing the common path at the expense of a rare error's specificity is the right tradeoff.
+
+---
 
 ```bash
 # Single key
@@ -133,7 +144,7 @@ hint: use --set-key-allow-missing to fall back to set comparison
 ```
 
 ```
-error: duplicate key [id=1] found at $.users[0] and $.users[3]
+error: duplicate key [id=1] found in $.users
 hint: use --set-key-allow-duplicates to use first occurrence
 ```
 
