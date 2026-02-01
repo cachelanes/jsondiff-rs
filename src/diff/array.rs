@@ -12,10 +12,9 @@ use std::hash::{Hash, Hasher};
 /// Below this size, linear search is faster due to cache locality.
 const HASHMAP_THRESHOLD: usize = 20;
 
-/// Threshold (total elements across both arrays) for using HashSet in set-key
-/// duplicate detection. String key hashing is cheap but allocation overhead
-/// dominates for small arrays; linear scan wins below ~250 elements per side.
-const SET_KEY_HASHMAP_THRESHOLD: usize = 500;
+/// Threshold for using HashSet in set-key duplicate detection.
+/// Aligned with HASHMAP_THRESHOLD used by set/multiset modes.
+const SET_KEY_HASHMAP_THRESHOLD: usize = HASHMAP_THRESHOLD;
 
 /// Compare arrays preserving order using a simple LCS-based approach
 pub fn diff_arrays_ordered(
@@ -485,7 +484,8 @@ pub fn diff_arrays_with_set_key(
 
     // Build key→value maps (first-match-wins for duplicates).
     // Use linear scan for small arrays (cache-friendly), HashSet for large ones.
-    let use_hashset = left_keyed.len() + right_keyed.len() > SET_KEY_HASHMAP_THRESHOLD;
+    let use_hashset = left_keyed.len() >= SET_KEY_HASHMAP_THRESHOLD
+        || right_keyed.len() >= SET_KEY_HASHMAP_THRESHOLD;
 
     let mut left_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
     let mut right_map: Vec<(String, Vec<(String, String)>, &Value)> = Vec::new();
