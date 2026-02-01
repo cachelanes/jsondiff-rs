@@ -148,15 +148,15 @@ fn load_inputs(args: &Args) -> Result<(Value, Value), JsonDiffError> {
         Ok((left, right))
     } else {
         // Parallel loading for two files
-        let paths: Vec<&Path> = vec![args.file1.as_path(), args.file2.as_path()];
+        let paths = [args.file1.as_path(), args.file2.as_path()];
         let results: Vec<Result<Value, JsonDiffError>> = paths
             .par_iter()
             .map(|p| JsonParser::parse_file(p))
             .collect();
 
-        let left = results.into_iter().next().unwrap()?;
-        let right_path = args.file2.as_path();
-        let right = JsonParser::parse_file(right_path)?;
+        let mut iter = results.into_iter();
+        let left = iter.next().expect("results should have a first element")?;
+        let right = iter.next().expect("results should have a second element")?;
 
         Ok((left, right))
     }
