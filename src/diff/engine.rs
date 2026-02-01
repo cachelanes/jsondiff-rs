@@ -91,9 +91,12 @@ pub fn diff_values(
             ArrayCompareMode::Set => {
                 Ok(diff_arrays_as_set(&left_slice, &right_slice, path, config))
             }
-            ArrayCompareMode::MultiSet => {
-                Ok(diff_arrays_as_multiset(&left_slice, &right_slice, path, config))
-            }
+            ArrayCompareMode::MultiSet => Ok(diff_arrays_as_multiset(
+                &left_slice,
+                &right_slice,
+                path,
+                config,
+            )),
         };
     }
 

@@ -101,7 +101,10 @@ fn parse_set_key_args(
 
     for arg in set_keys {
         // TODO: if we accumulate more of these expects, disable option_if_let_else in Cargo.toml
-        #[expect(clippy::option_if_let_else, reason = "match reads better than map_or_else here")]
+        #[expect(
+            clippy::option_if_let_else,
+            reason = "match reads better than map_or_else here"
+        )]
         let (array_path, key_field) = match arg.rfind('.') {
             Some(pos) => (arg[..pos].to_string(), arg[pos + 1..].to_string()),
             None => (String::new(), arg.clone()),

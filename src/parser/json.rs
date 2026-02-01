@@ -56,7 +56,10 @@ impl JsonParser {
         })
     }
 
-    #[expect(unsafe_code, reason = "mmap requires unsafe; file handle is kept alive")]
+    #[expect(
+        unsafe_code,
+        reason = "mmap requires unsafe; file handle is kept alive"
+    )]
     fn parse_file_mmap(path: &Path) -> Result<Value, JsonDiffError> {
         let file = fs::File::open(path).map_err(|e| JsonDiffError::FileRead {
             path: path.to_path_buf(),

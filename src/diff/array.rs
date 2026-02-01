@@ -17,7 +17,10 @@ const HASHMAP_THRESHOLD: usize = 20;
 const SET_KEY_HASHMAP_THRESHOLD: usize = HASHMAP_THRESHOLD;
 
 /// Compare arrays preserving order using a simple LCS-based approach
-#[expect(clippy::too_many_lines, reason = "phased diff algorithm is clearer as a single function")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "phased diff algorithm is clearer as a single function"
+)]
 pub fn diff_arrays_ordered(
     left: &[Value],
     right: &[Value],
@@ -245,8 +248,7 @@ pub fn diff_arrays_as_set(
     for val in left {
         let hash = compute_value_hash(val);
         // Only process first occurrence of each unique value
-        if is_first_occurrence_in_map(&left_map, hash, val)
-            && !set_contains(&right_map, hash, val)
+        if is_first_occurrence_in_map(&left_map, hash, val) && !set_contains(&right_map, hash, val)
         {
             ops.push(DiffOp::Removed {
                 path: path.append_set_marker(),
@@ -259,8 +261,7 @@ pub fn diff_arrays_as_set(
     for val in right {
         let hash = compute_value_hash(val);
         // Only process first occurrence of each unique value
-        if is_first_occurrence_in_map(&right_map, hash, val)
-            && !set_contains(&left_map, hash, val)
+        if is_first_occurrence_in_map(&right_map, hash, val) && !set_contains(&left_map, hash, val)
         {
             ops.push(DiffOp::Added {
                 path: path.append_set_marker(),
@@ -338,9 +339,7 @@ pub fn diff_arrays_as_multiset(
     for val in left {
         let hash = compute_value_hash(val);
         // Only process first occurrence of each unique value
-        if !processed.contains(&hash)
-            && is_first_occurrence_in_count_map(&left_counts, hash, val)
-        {
+        if !processed.contains(&hash) && is_first_occurrence_in_count_map(&left_counts, hash, val) {
             let left_count = get_count(&left_counts, hash, val);
             let right_count = get_count(&right_counts, hash, val);
 
@@ -360,8 +359,7 @@ pub fn diff_arrays_as_multiset(
     processed.clear();
     for val in right {
         let hash = compute_value_hash(val);
-        if !processed.contains(&hash)
-            && is_first_occurrence_in_count_map(&right_counts, hash, val)
+        if !processed.contains(&hash) && is_first_occurrence_in_count_map(&right_counts, hash, val)
         {
             let left_count = get_count(&left_counts, hash, val);
             let right_count = get_count(&right_counts, hash, val);
@@ -382,11 +380,7 @@ pub fn diff_arrays_as_multiset(
 }
 
 /// Linear multiset comparison for small arrays
-fn diff_arrays_as_multiset_linear(
-    left: &[Value],
-    right: &[Value],
-    path: &JsonPath,
-) -> Vec<DiffOp> {
+fn diff_arrays_as_multiset_linear(left: &[Value], right: &[Value], path: &JsonPath) -> Vec<DiffOp> {
     let mut ops = Vec::new();
 
     let left_counts = count_values_linear(left);
@@ -447,7 +441,10 @@ fn diff_arrays_as_multiset_linear(
 /// Elements with matching keys are recursively compared; unmatched elements
 /// are reported as added/removed. Elements missing key fields fall back
 /// to set comparison (lenient) or error (strict).
-#[expect(clippy::too_many_lines, reason = "set-key logic with keyed/unkeyed partitioning is clearer inline")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "set-key logic with keyed/unkeyed partitioning is clearer inline"
+)]
 pub fn diff_arrays_with_set_key(
     left: &[Value],
     right: &[Value],
@@ -465,7 +462,9 @@ pub fn diff_arrays_with_set_key(
     let mut left_unkeyed: Vec<&Value> = Vec::new();
 
     for (i, val) in left.iter().enumerate() {
-        if let Some(key) = extract_set_key(val, key_fields) { left_keyed.push((key, val)) } else {
+        if let Some(key) = extract_set_key(val, key_fields) {
+            left_keyed.push((key, val));
+        } else {
             if !set_key_config.allow_missing {
                 let missing_field = find_first_missing_field(val, key_fields);
                 return Err(JsonDiffError::SetKeyMissing {
@@ -481,7 +480,9 @@ pub fn diff_arrays_with_set_key(
     let mut right_unkeyed: Vec<&Value> = Vec::new();
 
     for (i, val) in right.iter().enumerate() {
-        if let Some(key) = extract_set_key(val, key_fields) { right_keyed.push((key, val)) } else {
+        if let Some(key) = extract_set_key(val, key_fields) {
+            right_keyed.push((key, val));
+        } else {
             if !set_key_config.allow_missing {
                 let missing_field = find_first_missing_field(val, key_fields);
                 return Err(JsonDiffError::SetKeyMissing {

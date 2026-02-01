@@ -44,7 +44,11 @@ fn generate_nested(depth: usize, breadth: usize) -> String {
 
     let mut parts = Vec::with_capacity(breadth);
     for i in 0..breadth {
-        parts.push(format!(r#""child_{}": {}"#, i, generate_nested(depth - 1, breadth)));
+        parts.push(format!(
+            r#""child_{}": {}"#,
+            i,
+            generate_nested(depth - 1, breadth)
+        ));
     }
     format!("{{{}}}", parts.join(", "))
 }
@@ -65,7 +69,10 @@ fn generate_diff_pair(n: usize, diff_percent: usize) -> (String, String) {
         }
     }
 
-    (format!("{{{}}}", parts1.join(", ")), format!("{{{}}}", parts2.join(", ")))
+    (
+        format!("{{{}}}", parts1.join(", ")),
+        format!("{{{}}}", parts2.join(", ")),
+    )
 }
 
 /// Generate two completely different objects (worst case)
@@ -78,7 +85,10 @@ fn generate_completely_different(n: usize) -> (String, String) {
         parts2.push(format!(r#""new_key_{i}": "new_value_{i}""#));
     }
 
-    (format!("{{{}}}", parts1.join(", ")), format!("{{{}}}", parts2.join(", ")))
+    (
+        format!("{{{}}}", parts1.join(", ")),
+        format!("{{{}}}", parts2.join(", ")),
+    )
 }
 
 // ============================================================================
@@ -199,7 +209,11 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("ordered_identical", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)).unwrap());
+                b.iter(|| {
+                    ordered_engine
+                        .diff(black_box(*left), black_box(*right))
+                        .unwrap()
+                });
             },
         );
     }
@@ -209,7 +223,13 @@ fn bench_diff_arrays(c: &mut Criterion) {
         let json1 = generate_array(*size);
         let json2 = {
             let elements: Vec<String> = (0..*size)
-                .map(|i| if i % 10 == 0 { (i + 1000).to_string() } else { i.to_string() })
+                .map(|i| {
+                    if i % 10 == 0 {
+                        (i + 1000).to_string()
+                    } else {
+                        i.to_string()
+                    }
+                })
                 .collect();
             format!("[{}]", elements.join(", "))
         };
@@ -221,7 +241,11 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("ordered_10pct_diff", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)).unwrap());
+                b.iter(|| {
+                    ordered_engine
+                        .diff(black_box(*left), black_box(*right))
+                        .unwrap()
+                });
             },
         );
     }
@@ -233,7 +257,13 @@ fn bench_diff_arrays(c: &mut Criterion) {
             // Change only the last 5% of elements
             let change_start = (*size * 95) / 100;
             let elements: Vec<String> = (0..*size)
-                .map(|i| if i >= change_start { (i + 1000).to_string() } else { i.to_string() })
+                .map(|i| {
+                    if i >= change_start {
+                        (i + 1000).to_string()
+                    } else {
+                        i.to_string()
+                    }
+                })
                 .collect();
             format!("[{}]", elements.join(", "))
         };
@@ -245,7 +275,11 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("ordered_5pct_end_diff", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| ordered_engine.diff(black_box(*left), black_box(*right)).unwrap());
+                b.iter(|| {
+                    ordered_engine
+                        .diff(black_box(*left), black_box(*right))
+                        .unwrap()
+                });
             },
         );
     }
@@ -267,7 +301,11 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("set_50pct_overlap", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| set_engine.diff(black_box(*left), black_box(*right)).unwrap());
+                b.iter(|| {
+                    set_engine
+                        .diff(black_box(*left), black_box(*right))
+                        .unwrap()
+                });
             },
         );
     }
@@ -288,7 +326,11 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("multiset_few_unique", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| multiset_engine.diff(black_box(*left), black_box(*right)).unwrap());
+                b.iter(|| {
+                    multiset_engine
+                        .diff(black_box(*left), black_box(*right))
+                        .unwrap()
+                });
             },
         );
     }
@@ -309,7 +351,11 @@ fn bench_diff_arrays(c: &mut Criterion) {
             BenchmarkId::new("multiset_50pct_overlap", size),
             &(&left, &right),
             |b, (left, right)| {
-                b.iter(|| multiset_engine.diff(black_box(*left), black_box(*right)).unwrap());
+                b.iter(|| {
+                    multiset_engine
+                        .diff(black_box(*left), black_box(*right))
+                        .unwrap()
+                });
             },
         );
     }
@@ -511,9 +557,7 @@ fn generate_keyed_diff_pair(
         .filter(|i| *i >= remove_count) // remove first `remove_count` elements
         .map(|i| {
             if i < diff_count + remove_count {
-                format!(
-                    r#"{{"id": {i}, "name": "name_{i}", "value": "changed_{i}"}}"#
-                )
+                format!(r#"{{"id": {i}, "name": "name_{i}", "value": "changed_{i}"}}"#)
             } else {
                 format!(r#"{{"id": {i}, "name": "name_{i}", "value": "val_{i}"}}"#)
             }

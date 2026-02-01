@@ -32,11 +32,23 @@ pub fn diff_objects(
 
         if config.ordered_objects {
             diff_objects_ordered_hashset(
-                left, right, path, config, &mut ops, &left_keys, &right_keys,
+                left,
+                right,
+                path,
+                config,
+                &mut ops,
+                &left_keys,
+                &right_keys,
             )?;
         } else {
             diff_objects_unordered_hashset(
-                left, right, path, config, &mut ops, &left_keys, &right_keys,
+                left,
+                right,
+                path,
+                config,
+                &mut ops,
+                &left_keys,
+                &right_keys,
             )?;
         }
     } else {

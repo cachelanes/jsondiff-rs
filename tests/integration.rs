@@ -403,7 +403,8 @@ fn test_output_is_deterministic() {
     let first = &outputs[0];
     for (i, output) in outputs.iter().enumerate().skip(1) {
         assert_eq!(
-            first, output,
+            first,
+            output,
             "Output differed between run 1 and run {} - non-deterministic output detected",
             i + 1
         );
@@ -550,16 +551,8 @@ fn test_set_key_missing_strict() {
     let mut file1 = NamedTempFile::new().unwrap();
     let mut file2 = NamedTempFile::new().unwrap();
 
-    writeln!(
-        file1,
-        r#"[{{"id": 1, "v": "a"}}, {{"no_id": true}}]"#
-    )
-    .unwrap();
-    writeln!(
-        file2,
-        r#"[{{"id": 1, "v": "a"}}]"#
-    )
-    .unwrap();
+    writeln!(file1, r#"[{{"id": 1, "v": "a"}}, {{"no_id": true}}]"#).unwrap();
+    writeln!(file2, r#"[{{"id": 1, "v": "a"}}]"#).unwrap();
 
     jsondiff()
         .args([
@@ -616,11 +609,7 @@ fn test_set_key_duplicates_strict() {
         r#"[{{"id": 1, "v": "first"}}, {{"id": 1, "v": "second"}}]"#
     )
     .unwrap();
-    writeln!(
-        file2,
-        r#"[{{"id": 1, "v": "first"}}]"#
-    )
-    .unwrap();
+    writeln!(file2, r#"[{{"id": 1, "v": "first"}}]"#).unwrap();
 
     jsondiff()
         .args([
@@ -788,7 +777,13 @@ fn test_set_key_duplicate_key_args_deduped() {
             file1.path().to_str().unwrap(),
             file2.path().to_str().unwrap(),
         ])
-        .args(["--set-key", "users.id", "--set-key", "users.id", "--no-color"])
+        .args([
+            "--set-key",
+            "users.id",
+            "--set-key",
+            "users.id",
+            "--no-color",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains("No differences found"));
