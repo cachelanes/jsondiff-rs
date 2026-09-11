@@ -605,13 +605,9 @@ fn extract_set_key(value: &Value, key_fields: &[String]) -> Option<Vec<(String, 
     let obj = value.as_object()?;
     let mut key_parts = Vec::with_capacity(key_fields.len());
     for field in key_fields {
-        match obj.get(&field.clone()) {
-            Some(v) => {
-                let key_str = value_to_key_string(v);
-                key_parts.push((field.clone(), key_str));
-            }
-            None => return None,
-        }
+        let v = obj.get(&field.clone())?;
+        let key_str = value_to_key_string(v);
+        key_parts.push((field.clone(), key_str));
     }
     Some(key_parts)
 }

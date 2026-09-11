@@ -27,7 +27,7 @@ colored = "3.0"
 thiserror = "2.0"
 
 # Memory mapping for large files
-memmap2 = "0.9"
+memmap2 = "0.9.11"
 
 # Parallel processing
 rayon = "1.11"
