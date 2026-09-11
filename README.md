@@ -12,6 +12,7 @@ A lightning-fast JSON diff tool with beautiful, colorful output.
   - Ordered comparison (default)
   - Set mode (`-s`): ignore order and duplicates
   - Multiset mode (`-m`): ignore order, count duplicates
+  - Key-matched mode (`--set-key`): match objects by an identifying field
 - **Smart object comparison**: Unordered by default (semantic matching)
 - **Multiple output formats**: Pretty, JSON, or summary
 - **Stdin support**: Pipe JSON directly
@@ -109,6 +110,64 @@ No differences found.
 | Set | `-s` | No | No |
 | Multiset | `-m` | No | Yes |
 
+### Matching array objects by key
+
+When array elements are objects with an identifying field, `--set-key` pairs
+them up by that field instead of by position. Reordering then produces no
+noise, and changes are reported against the matched element:
+
+```json
+// old.json
+{
+  "users": [
+    {"id": 1, "name": "Alice", "role": "admin"},
+    {"id": 2, "name": "Bob", "role": "user"},
+    {"id": 3, "name": "Charlie", "role": "user"}
+  ]
+}
+
+// new.json
+{
+  "users": [
+    {"id": 3, "name": "Charlie", "role": "moderator"},
+    {"id": 1, "name": "Alice", "role": "admin"},
+    {"id": 4, "name": "Diana", "role": "user"}
+  ]
+}
+```
+
+```bash
+$ jsondiff --set-key users.id old.json new.json
+$.users[id=2]
+- {
+-     "id": 2,
+-     "name": "Bob",
+-     "role": "user"
+-   }
+
+$.users[id=3].role
+- "user"
++ "moderator"
+
+$.users[id=4]
++ {
++     "id": 4,
++     "name": "Diana",
++     "role": "user"
++   }
+
+----------------------------------------
+1 added, 1 removed, 1 modified
+```
+
+The value is `path.key`, where `path` locates the array and `key` names the
+field. Use a bare key (e.g. `--set-key id`) for a root-level array. Repeating
+`--set-key` with the same path builds a composite key, e.g.
+`--set-key items.name --set-key items.type`. Elements missing the key field
+fall back to set comparison, and duplicate key values use the first
+occurrence; pass `--set-key-allow-missing false` or
+`--set-key-allow-duplicates false` to make those errors instead.
+
 ### Output formats
 
 ```bash
@@ -152,14 +211,18 @@ Arguments:
   <FILE2>  Second JSON file to compare
 
 Options:
-  -s, --array-set         Treat arrays as unordered sets
-  -m, --array-multiset    Treat arrays as unordered multisets
-  -o, --ordered-objects   Compare objects as ordered (key order matters)
-  -f, --format <FORMAT>   Output format [default: pretty] [values: pretty, json, summary]
-      --no-color          Disable colored output
-  -c, --compact           Show only paths that differ
-  -h, --help              Print help
-  -V, --version           Print version
+  -s, --array-set                     Treat arrays as unordered sets
+  -m, --array-multiset                Treat arrays as unordered multisets
+  -o, --ordered-objects               Compare objects as ordered (key order matters)
+      --set-key <PATH.KEY>            Match array objects by a key field instead of position
+      --set-key-allow-missing <BOOL>  Allow elements missing the key field [default: true]
+      --set-key-allow-duplicates <BOOL>
+                                      Allow duplicate key values, using the first [default: true]
+  -f, --format <FORMAT>               Output format [default: pretty] [values: pretty, json, summary]
+      --no-color                      Disable colored output
+  -c, --compact                       Show only paths that differ
+  -h, --help                          Print help
+  -V, --version                       Print version
 ```
 
 ## Exit Codes
@@ -202,7 +265,6 @@ cargo bench -- real_world        # Real-world fixtures (GeoJSON, package-lock)
 
 The following features are planned but not yet implemented:
 
-- `--set-keys <KEY>`: Match array objects by a specific property
 - `--ignore <PATH>`: Exclude paths from comparison
 - JSON Patch (RFC 6902) output format
 
