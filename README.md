@@ -206,3 +206,7 @@ The following features are planned but not yet implemented:
 - `--ignore <PATH>`: Exclude paths from comparison
 - JSON Patch (RFC 6902) output format
 
+
+## License
+
+Licensed under the [MIT License](LICENSE).
